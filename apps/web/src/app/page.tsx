@@ -11,20 +11,13 @@ import {
   type StatusResponse,
 } from "@etesia/shared";
 import { fetchStatus } from "@/lib/status";
-import { formatUsd, formatSignedUsd } from "@/lib/format";
+import { formatUsd } from "@/lib/format";
+import { Stat } from "@/components/Stat";
+import { PositionsTable } from "@/components/PositionsTable";
+import { VaultChart } from "@/components/VaultChart";
 
 function short(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
-
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }): React.JSX.Element {
-  return (
-    <div className="rounded-xl border border-border bg-surface p-5">
-      <div className="text-xs uppercase tracking-wide text-muted">{label}</div>
-      <div className="mt-2 font-mono text-2xl text-ink">{value}</div>
-      {hint ? <div className="mt-1 text-xs text-faint">{hint}</div> : null}
-    </div>
-  );
 }
 
 export default function Page(): React.JSX.Element {
@@ -36,6 +29,7 @@ export default function Page(): React.JSX.Element {
   const nav = data?.nav;
   const vs = data?.vaultState;
   const sharePrice = vs?.sharePrice;
+  const firstLoad = isLoading && !data;
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
@@ -71,62 +65,30 @@ export default function Page(): React.JSX.Element {
       ) : null}
 
       <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Stat label="NAV" value={nav ? formatUsd(nav.navUsd) : "—"} hint="GMX-aware total assets" />
+        <Stat label="NAV" value={nav ? formatUsd(nav.navUsd) : "—"} hint="GMX-aware total assets" loading={firstLoad} />
         <Stat
           label="Share price"
           value={sharePrice != null ? sharePrice.toFixed(4) : "—"}
           hint={vs ? `supply ${(Number(vs.totalSupply) / 1e18).toFixed(2)}` : undefined}
+          loading={firstLoad}
         />
-        <Stat label="Idle USDC" value={nav ? formatUsd(nav.idleUsd) : "—"} hint="held by trading EOA" />
+        <Stat label="Idle USDC" value={nav ? formatUsd(nav.idleUsd) : "—"} hint="held by trading EOA" loading={firstLoad} />
         <Stat
           label="Positions net"
           value={nav ? formatUsd(nav.positionsNetUsd) : "—"}
           hint={nav && nav.pendingCollateralUsd > 0 ? `+${formatUsd(nav.pendingCollateralUsd)} pending` : undefined}
+          loading={firstLoad}
         />
       </section>
 
       <section className="mt-8">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-          GMX positions
-        </h2>
-        <div className="overflow-hidden rounded-xl border border-border">
-          <table className="w-full text-sm">
-            <thead className="bg-surface text-left text-xs uppercase tracking-wide text-muted">
-              <tr>
-                <th className="px-4 py-3">Market</th>
-                <th className="px-4 py-3">Side</th>
-                <th className="px-4 py-3 text-right">Size (USD)</th>
-                <th className="px-4 py-3 text-right">Net value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading && !data ? (
-                <tr>
-                  <td className="px-4 py-6 text-muted" colSpan={4}>
-                    Loading…
-                  </td>
-                </tr>
-              ) : (data?.positions.length ?? 0) === 0 ? (
-                <tr>
-                  <td className="px-4 py-6 text-faint" colSpan={4}>
-                    No open positions.
-                  </td>
-                </tr>
-              ) : (
-                data?.positions.map((p) => (
-                  <tr key={`${p.symbol}-${p.isLong}`} className="border-t border-border">
-                    <td className="px-4 py-3 font-medium text-ink">{p.symbol}</td>
-                    <td className={`px-4 py-3 ${p.isLong ? "text-accent" : "text-negative"}`}>
-                      {p.isLong ? "LONG" : "SHORT"}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono">{formatUsd(p.sizeUsd)}</td>
-                    <td className="px-4 py-3 text-right font-mono">{formatSignedUsd(p.netValueUsd)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Performance</h2>
+        <VaultChart />
+      </section>
+
+      <section className="mt-8">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">GMX positions</h2>
+        <PositionsTable positions={data?.positions ?? []} loading={firstLoad} />
       </section>
 
       <footer className="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted">
