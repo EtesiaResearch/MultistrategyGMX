@@ -39,4 +39,31 @@ export const vaultAbi = [
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
   },
+  // Role / asset getters for the fail-fast startup check. `owner` (Ownable2Step)
+  // and `safe` (curator) are reliable; `valuationManager`/`getRolesStorage`/
+  // `pendingSilo` are best-effort (older deploys revert — caught and tolerated).
+  { type: "function", name: "owner", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "safe", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "asset", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "valuationManager", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "pendingSilo", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  {
+    type: "function",
+    name: "getRolesStorage",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "whitelistManager", type: "address" },
+          { name: "feeReceiver", type: "address" },
+          { name: "safe", type: "address" },
+          { name: "feeRegistry", type: "address" },
+          { name: "valuationManager", type: "address" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
 ] as const;

@@ -1,10 +1,13 @@
 import Fastify from "fastify";
+import cors from "@fastify/cors";
 import cron from "node-cron";
 import { pino, type LoggerOptions } from "pino";
 import { canBroadcast, loadConfig } from "./config.js";
 import { makeAccount, makePublicClient, makeWalletClient } from "./clients.js";
+import type { Address } from "viem";
 import { makeGmxSdk } from "./gmx/sdk.js";
 import { makeSignalSource } from "./signal/index.js";
+import { runStartupCheck } from "./startup-check.js";
 import { tradeCycle } from "./crons/trade-cycle.js";
 import { navCycle, type NavCycleResult } from "./crons/nav-cycle.js";
 
@@ -33,6 +36,17 @@ async function main(): Promise<void> {
     },
     "etesia-gmx booting",
   );
+
+  // Fail-fast: HOT_PK controls E, vault roles resolve to E, asset == USDC. A hard
+  // failure here aborts boot (push/settle would only revert downstream).
+  await runStartupCheck({
+    publicClient,
+    logger,
+    account: account?.address,
+    expectedEoa: cfg.EXPECTED_EOA as Address,
+    vault: cfg.VAULT_ADDRESS as Address | undefined,
+    usdc: cfg.USDC_ADDRESS as Address,
+  });
 
   // Shared mutable status for the /status endpoint + watchdogs.
   const status = {
@@ -74,6 +88,11 @@ async function main(): Promise<void> {
   }
 
   const app = Fastify({ logger: false });
+  // Wide-open CORS — deliberate hackathon-only choice so any local/Railway web front
+  // can read /status + /healthz. No credentials (front is read-only fetch), so '*' is
+  // correct. Registered before routes; @fastify/cors handles OPTIONS preflight globally.
+  // For a real deployment, scope `origin` to the web origin.
+  await app.register(cors, { origin: "*" });
   app.get("/healthz", () => ({ status: "ok", chainId: cfg.CHAIN_ID, dryRun: cfg.DRY_RUN }));
   app.get("/status", () => ({
     signalSource: signalSource.name,

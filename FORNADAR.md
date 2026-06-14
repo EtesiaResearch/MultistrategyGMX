@@ -127,3 +127,39 @@ typecheck clean.**
 **Remaining = task #7 only:** funded-EOA + deployed-vault live broadcasts (open/close, push NAV,
 settle, deposit/redeem round-trip). Code is complete + DRY_RUN-gated; go-live = fill env + flip flag.
 Docs: README.md (go-live checklist) + DEMO.md (judge script).
+
+---
+
+## 2026-06-14 — Live addresses wired + fail-fast startup check + NAV cleanliness + CORS
+
+**Live vault** `0x7f6c5ed71ca969168247958057fcfe06c68ad5a2` (Arbitrum One). **E** (single hot EOA =
+trader = valuationManager = curator/safe) = `0xee94E1A5534A70231DaEE670b51fEC50AC032b6A`. Defaulted
+both into `config.ts` (`VAULT_ADDRESS`, `EXPECTED_EOA`) and `.env`/`.env.example`.
+
+**Probed the deployed vault live:** `owner()` = `safe()` = E ✓, `asset()` = native USDC ✓.
+`decimals()` = **18** = the *share* token (asset USDC stays 6dp — NAV push uses 6dp, correct). This
+deploy is an **older ABI**: `getRolesStorage()`, `pendingSilo()`, `valuationManager()` all revert
+(selectors absent), but `owner()`/`safe()` standalone getters work.
+
+**Fail-fast startup check** (`src/startup-check.ts`, wired into `index.ts` before cycles):
+- HOT_PK set → assert `getAddress(account) === EXPECTED_EOA`, else abort.
+- `vault.owner()` and `vault.safe()` must equal E (hard abort) — settle is `onlySafe`.
+- `vault.asset()` must equal native USDC (hard abort).
+- `valuationManager`: best-effort via `getRolesStorage()`→`valuationManager()`; this deploy exposes
+  neither, so we WARN and rely on the **push-time simulation** guard (updateNewTotalAssets reverts if
+  E isn't the valuationManager). Verified live: prints the warning, owner+safe+asset all ✓.
+- Silo getter n/a on this deploy → logged; NAV never reads it anyway.
+
+**NAV cleanliness (corrected guidance):** NAV idle = `balanceOf(E)` ONLY (compute.ts) — never Silo or
+vault balance, so Lagoon pending deposits (held in the Silo until settle) can't be double-counted.
+Added a unit test pinning that contract (`assemble.test.ts`, now 33 tests). **E must hold ZERO personal
+USDC**; boot warns loudly if `balanceOf(E) > 0 && totalSupply == 0`. The earlier "keep ~40–50 USDC on
+E" note was for a separate-Safe design and is WRONG here — GMX collateral comes from deposited USDC
+that settle moves into E. Go-live sequence documented in DEMO.md.
+
+**CORS (deliberate hackathon-only):** registered `@fastify/cors` with `origin: '*'` globally before
+routes (no credentials — front is read-only fetch). Covers `/status`, `/healthz`, OPTIONS preflight.
+No `WEB_ORIGIN` env / allowlist. Verified: `GET /status` → `access-control-allow-origin: *`, preflight
+204. **Revert to a scoped origin for any real deployment.**
+
+**33/33 tests green; typecheck clean.**

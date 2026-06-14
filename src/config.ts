@@ -21,9 +21,12 @@ const ConfigSchema = z.object({
 
   // Hot wallet — optional in dev (read-only / simulate), required to broadcast.
   HOT_PK: pkSchema.optional(),
+  // The single hot EOA address (E) = GMX trader = valuationManager = curator/safe.
+  // The startup check asserts privateKeyToAccount(HOT_PK).address === EXPECTED_EOA.
+  EXPECTED_EOA: addressSchema.default("0xee94E1A5534A70231DaEE670b51fEC50AC032b6A"),
 
-  // Lagoon vault — optional until deployed.
-  VAULT_ADDRESS: addressSchema.optional(),
+  // Lagoon vault on Arbitrum One (deployed; both roles = E).
+  VAULT_ADDRESS: addressSchema.default("0x7f6c5ed71ca969168247958057fcfe06c68ad5a2"),
   SILO_ADDRESS: addressSchema.optional(),
 
   // GMX V2 contracts (Arbitrum One — verified 2026-06-14, see .claude/gmx.md).

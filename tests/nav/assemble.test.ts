@@ -38,6 +38,22 @@ describe("assembleNav", () => {
     expect(nav.navUsdc6).toBe(30_250_000n);
   });
 
+  it("idle is the ONLY balance term — Silo/vault balances are excluded by construction", () => {
+    // NAV idle = balanceOf(E) only. assembleNav takes no silo/vault balance input, so
+    // pending Lagoon deposits (which sit in the Silo until settle) can never be
+    // double-counted. This pins that contract: NAV == idle + Σnet + Σpending, nothing else.
+    const idleUsdc6 = 42_000_000n;
+    const nav = assembleNav({
+      idleUsdc6,
+      positionNetValues1e30: [usdToGmxUsd(8)],
+      pendingIncreaseCollateral6: [3_000_000n],
+    });
+    expect(nav.navUsdc6).toBe(idleUsdc6 + 8_000_000n + 3_000_000n);
+    expect(Object.keys(nav).sort()).toEqual(
+      ["idleUsdc6", "navUsdc6", "pendingCollateralUsd6", "positionsNetUsd6"].sort(),
+    );
+  });
+
   it("floors at zero", () => {
     const nav = assembleNav({
       idleUsdc6: 0n,
