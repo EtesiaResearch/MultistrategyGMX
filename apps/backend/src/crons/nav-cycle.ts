@@ -53,12 +53,7 @@ export async function navCycle(deps: NavCycleDeps): Promise<NavCycleResult> {
     positionsNetUsd: usdc6ToNumber(nav.positionsNetUsd6),
     pendingCollateralUsd: usdc6ToNumber(nav.pendingCollateralUsd6),
   };
-  const positions: StatusPosition[] = nav.positionComponents.map((p) => ({
-    symbol: p.symbol,
-    isLong: p.isLong,
-    sizeUsd: p.sizeUsd,
-    netValueUsd: p.netValueUsd,
-  }));
+  const positions: StatusPosition[] = nav.positionComponents;
   const vaultState = await readVaultState(publicClient, cfg.VAULT_ADDRESS as Address | undefined);
 
   // Gas watchdog — the bot dies silently when E runs out of ETH (gas + GMX exec fees).

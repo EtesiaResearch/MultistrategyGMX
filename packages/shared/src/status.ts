@@ -3,8 +3,13 @@
 export interface StatusPosition {
   symbol: string;
   isLong: boolean;
-  sizeUsd: number; // signed notional magnitude
+  sizeUsd: number; // position notional (USD)
   netValueUsd: number; // collateral - fees + uPnL
+  entryPrice: number; // avg entry price (USD)
+  markPrice: number; // current index price (USD)
+  pnlUsd: number; // unrealized PnL (USD)
+  roePct: number | null; // return on equity = pnl / collateral (null if no collateral)
+  leverage: number | null; // e.g. 2 for 2x (null if unavailable)
 }
 
 export interface StatusNav {

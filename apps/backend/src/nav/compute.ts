@@ -2,6 +2,7 @@ import type { GmxSdk } from "@gmx-io/sdk";
 import { OrderType } from "@gmx-io/sdk/types/orders";
 import type { Logger } from "pino";
 import type { Address, PublicClient } from "viem";
+import type { StatusPosition } from "@etesia/shared";
 import { usdcAbi } from "../abi/usdc.js";
 import { gmxUsdToNumber } from "../gmx/converters.js";
 import type { MarketsBundle } from "../gmx/markets.js";
@@ -18,7 +19,7 @@ export interface ComputeNavDeps {
 }
 
 export interface NavResult extends NavBreakdown {
-  positionComponents: { symbol: string; isLong: boolean; netValueUsd: number; sizeUsd: number }[];
+  positionComponents: StatusPosition[];
   pendingIncreaseCount: number;
 }
 
@@ -56,12 +57,24 @@ export async function computeNav(deps: ComputeNavDeps): Promise<NavResult> {
   const result: NavResult = {
     ...breakdown,
     pendingIncreaseCount: pendingIncrease.length,
-    positionComponents: positions.map((p) => ({
-      symbol: p.indexToken?.symbol ?? "?",
-      isLong: p.isLong,
-      netValueUsd: gmxUsdToNumber(p.netValue),
-      sizeUsd: gmxUsdToNumber(p.sizeInUsd),
-    })),
+    // GMX PositionInfo prices (entryPrice/markPrice) are 1e30-scaled USD, same as
+    // pnl/netValue — gmxUsdToNumber handles all. leverage is in basis points
+    // (BASIS_POINTS_DIVISOR=10000 → 1x), ROE = pnl / collateral.
+    positionComponents: positions.map((p) => {
+      const pnlUsd = gmxUsdToNumber(p.pnl);
+      const collateralUsd = gmxUsdToNumber(p.collateralUsd);
+      return {
+        symbol: p.indexToken?.symbol ?? "?",
+        isLong: p.isLong,
+        netValueUsd: gmxUsdToNumber(p.netValue),
+        sizeUsd: gmxUsdToNumber(p.sizeInUsd),
+        entryPrice: gmxUsdToNumber(p.entryPrice ?? 0n),
+        markPrice: gmxUsdToNumber(p.markPrice ?? 0n),
+        pnlUsd,
+        roePct: collateralUsd > 0 ? (pnlUsd / collateralUsd) * 100 : null,
+        leverage: p.leverage != null ? Number(p.leverage) / 10_000 : null,
+      };
+    }),
   };
 
   deps.logger?.info(
