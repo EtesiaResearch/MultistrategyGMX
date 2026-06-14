@@ -246,3 +246,28 @@ confirms the formula. **GMX-aware NAV is trustworthy. The full loop — deposit�
 close on GMX, NAV tracks — is proven on Arbitrum mainnet.** Switched to a private Alchemy RPC.
 Fixed a cosmetic share-price display bug in `snapshot.ts` (6dp/18dp). Swapped to a private Alchemy
 `ARBITRUM_RPC` (secret — in `.env` + Railway var, never committed).
+
+---
+
+## 2026-06-14 — Railway LIVE, ops fixes (cadence + gas watchdog + flat), read-flakiness flagged
+
+Backend deployed on Railway with **DRY_RUN=false** → it traded for real: pushed NAV (tx 0x836ace70…)
+and opened the mock ETH $15 long. State held safe overnight: ETH 0.005, NAV ~$49.88, pps ~0.9974
+(GMX-aware NAV correctly flowing into the share price). Burn was tiny (~0.0009 ETH) because Lagoon
+reverts a re-proposed unsettled NAV → most `updateNewTotalAssets` revert at `simulate` (free).
+
+**My mistake (Nadar rightly annoyed):** shipped `NAV_CRON=TRADE_CRON=*/2min` default + no gas watchdog,
+ignoring etesia-curator's lessons (12h settle, gas watchdog). See [[apply-curator-ops-lessons]]. Fixes:
+- Cadence default → **15 min** (`*/15`). Prod should be slower (~12h).
+- **`SIGNAL_SOURCE=flat`** (new `FlatSignalSource`) → returns no targets → bot closes everything and
+  stays flat (wind-down without stopping the service).
+- **Gas watchdog**: nav-cycle reads E's ETH each cycle, WARNs below `GAS_MIN_ETH` (0.002), surfaced in
+  `/status.gas`.
+- Did NOT do push-on-change (skipping push on flat NAV) — unsafe without pending-deposit detection (a
+  pending deposit doesn't move computed NAV, so gating the push would stop deposits settling). Needs
+  curator's `detectPending` ported first.
+
+**KNOWN BUG flagged:** the SDK `getPositionsInfo` intermittently returns an empty list (nav-cycle saw
+the ETH position, trade-cycle 4s later saw none). Makes `flat` take an extra cycle to close, and risks
+`mock` re-opening duplicates (mitigated: GMX merges same-direction increases). Proper fix = read
+positions via `Reader.getAccountPositions` (ground truth) instead of the SDK's derived view. TODO.

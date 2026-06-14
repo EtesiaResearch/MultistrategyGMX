@@ -46,20 +46,28 @@ const ConfigSchema = z.object({
   MAX_TOTAL_NOTIONAL_USD: z.coerce.number().positive().default(200),
   ACCEPTABLE_PRICE_SLIPPAGE_BPS: z.coerce.number().int().nonnegative().default(150),
 
-  // Signal source
-  SIGNAL_SOURCE: z.enum(["mock", "hlnative"]).default("mock"),
+  // Signal source. "flat" = no targets → bot closes everything and stays flat.
+  SIGNAL_SOURCE: z.enum(["mock", "hlnative", "flat"]).default("mock"),
   HLNATIVE_BASE_URL: z.string().url().default("http://localhost:4000"),
+  // Static fallback scale (used when MIRROR_DYNAMIC=false).
   MIRROR_SCALE: z.coerce.number().positive().default(1),
+  // Dynamic mirror: normalize the hlnative book so Σ|notional| = NAV × MIRROR_GROSS_LEVERAGE
+  // (a proportional replica that auto-resizes as NAV grows). On by default.
+  MIRROR_DYNAMIC: boolSchema.default("true"),
+  MIRROR_GROSS_LEVERAGE: z.coerce.number().positive().default(1),
 
   // NAV guards (ported from etesia-curator)
   STRICT_FIRST_NAV_ZERO: boolSchema.default("true"),
   NAV_DIVERGENCE_MAX_BPS: z.coerce.number().int().positive().default(1000),
+  // Gas watchdog: warn loudly + flag /status when E's ETH drops below this (ether).
+  GAS_MIN_ETH: z.coerce.number().positive().default(0.002),
 
-  // Operational
+  // Operational — 15min default cadence (a 2min NAV push spams updateNewTotalAssets
+  // and burns the EOA's ETH; prod should be slower still, ~12h like etesia-curator).
   DRY_RUN: boolSchema.default("true"),
   NODE_ENV: z.enum(["development", "staging", "production"]).default("development"),
-  TRADE_CRON: z.string().default("*/2 * * * *"),
-  NAV_CRON: z.string().default("*/2 * * * *"),
+  TRADE_CRON: z.string().default("*/15 * * * *"),
+  NAV_CRON: z.string().default("*/15 * * * *"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   PORT: z.coerce.number().int().positive().default(8080),
 });

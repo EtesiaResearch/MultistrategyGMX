@@ -1,7 +1,7 @@
 import type { GmxSdk } from "@gmx-io/sdk";
-import type { StatusNav, StatusPosition, StatusVaultState } from "@etesia/shared";
+import type { StatusGas, StatusNav, StatusPosition, StatusVaultState } from "@etesia/shared";
 import type { Logger } from "pino";
-import type { Address, PublicClient, WalletClient } from "viem";
+import { formatEther, parseEther, type Address, type PublicClient, type WalletClient } from "viem";
 import { vaultAbi } from "../abi/vault.js";
 import { canBroadcast, type Config } from "../config.js";
 import { usdc6ToNumber } from "../gmx/converters.js";
@@ -26,6 +26,7 @@ export interface NavCycleResult {
   nav: StatusNav;
   positions: StatusPosition[];
   vaultState: StatusVaultState | null;
+  gas: StatusGas;
 }
 
 // One NAV cycle: compute GMX-aware NAV -> (live) push it to Lagoon -> settle deposit
@@ -60,7 +61,20 @@ export async function navCycle(deps: NavCycleDeps): Promise<NavCycleResult> {
   }));
   const vaultState = await readVaultState(publicClient, cfg.VAULT_ADDRESS as Address | undefined);
 
-  const base = { navUsdc6: nav.navUsdc6, nav: navSnap, positions, vaultState };
+  // Gas watchdog — the bot dies silently when E runs out of ETH (gas + GMX exec fees).
+  const ethWei = await publicClient.getBalance({ address: readAccount });
+  const gas: StatusGas = {
+    ethBalance: Number(formatEther(ethWei)),
+    low: ethWei < parseEther(String(cfg.GAS_MIN_ETH)),
+  };
+  if (gas.low) {
+    logger.warn(
+      { ethBalance: gas.ethBalance, minEth: cfg.GAS_MIN_ETH, account: readAccount },
+      "GAS LOW: E is running out of ETH — NAV pushes and GMX orders will start failing. Top up.",
+    );
+  }
+
+  const base = { navUsdc6: nav.navUsdc6, nav: navSnap, positions, vaultState, gas };
 
   if (!canBroadcast(cfg) || !cfg.VAULT_ADDRESS || !walletClient) {
     logger.info(

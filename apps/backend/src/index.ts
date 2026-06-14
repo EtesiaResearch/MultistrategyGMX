@@ -9,6 +9,9 @@ import type { StatusResponse } from "@etesia/shared";
 import { makeGmxSdk } from "./gmx/sdk.js";
 import { makeSignalSource } from "./signal/index.js";
 import { runStartupCheck } from "./startup-check.js";
+import { loadMarkets } from "./gmx/markets.js";
+import { computeNav } from "./nav/compute.js";
+import { usdc6ToNumber } from "./gmx/converters.js";
 import { tradeCycle } from "./crons/trade-cycle.js";
 import { navCycle, type NavCycleResult } from "./crons/nav-cycle.js";
 
@@ -22,7 +25,14 @@ async function main(): Promise<void> {
   const walletClient = makeWalletClient(cfg);
   const account = makeAccount(cfg);
   const sdk = makeGmxSdk(cfg);
-  const signalSource = makeSignalSource(cfg, logger);
+  // NAV provider for the dynamic hlnative mirror — reads E's live NAV (idle + positions).
+  const readAccount = (account?.address ?? cfg.EXPECTED_EOA) as Address;
+  const navProvider = async (): Promise<number> => {
+    const bundle = await loadMarkets(sdk);
+    const nav = await computeNav({ sdk, publicClient, bundle, account: readAccount, usdc: cfg.USDC_ADDRESS as Address });
+    return usdc6ToNumber(nav.navUsdc6);
+  };
+  const signalSource = makeSignalSource(cfg, logger, navProvider);
 
   logger.info(
     {
@@ -107,6 +117,7 @@ async function main(): Promise<void> {
       nav: n?.nav ?? null,
       positions: n?.positions ?? [],
       vaultState: n?.vaultState ?? null,
+      gas: n?.gas ?? null,
       pushed: n?.pushed ?? false,
       settled: n?.settled ?? { deposit: false, redeem: false },
       lastTradeAt: status.lastTradeAt,
