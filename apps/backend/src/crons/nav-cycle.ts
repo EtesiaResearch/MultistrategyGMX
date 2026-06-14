@@ -98,14 +98,21 @@ export async function navCycle(deps: NavCycleDeps): Promise<NavCycleResult> {
   );
   logger.info({ txHash: pushResult.txHash, navUsdc6: nav.navUsdc6.toString() }, "pushed NAV");
 
-  // Settle both — each skips itself if there's nothing pending (simulation reverts).
+  // settleDeposit commits the proposed NAV and settles BOTH pending deposits AND redeems
+  // (and re-prices when nothing is pending). Calling settleRedeem afterwards would try to
+  // re-commit an already-consumed NAV and REVERT — so only fall back to settleRedeem when
+  // the deposit settle itself couldn't run. (Each self-skips if its simulation reverts.)
   const settleDeps = { publicClient, walletClient, vault, logger };
   const dep = await settleDeposit(settleDeps, nav.navUsdc6);
-  const red = await settleRedeem(settleDeps, nav.navUsdc6);
+  let redeemSettled = false;
+  if (dep.skipped) {
+    const red = await settleRedeem(settleDeps, nav.navUsdc6);
+    redeemSettled = !red.skipped;
+  }
 
   // Re-read vault state after settle so /status reflects the new share price.
   const after = await readVaultState(publicClient, vault);
-  return { ...base, vaultState: after, pushed: true, settled: { deposit: !dep.skipped, redeem: !red.skipped } };
+  return { ...base, vaultState: after, pushed: true, settled: { deposit: !dep.skipped, redeem: redeemSettled } };
 }
 
 async function readVaultState(

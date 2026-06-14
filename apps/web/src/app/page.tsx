@@ -65,18 +65,16 @@ export default function Page(): React.JSX.Element {
         ) : null}
 
         <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Stat label="NAV" value={nav ? formatUsd(nav.navUsd) : "—"} hint="GMX-aware total assets" loading={firstLoad} />
+          <Stat label="NAV" value={nav ? formatUsd(nav.navUsd) : "—"} loading={firstLoad} />
           <Stat
             label="Share price"
             value={sharePrice != null ? sharePrice.toFixed(4) : "—"}
-            hint={vs ? `supply ${(Number(vs.totalSupply) / 1e18).toFixed(2)}` : undefined}
             loading={firstLoad}
           />
-          <Stat label="Idle USDC" value={nav ? formatUsd(nav.idleUsd) : "—"} hint="held by trading EOA" loading={firstLoad} />
+          <Stat label="Idle USDC" value={nav ? formatUsd(nav.idleUsd) : "—"} loading={firstLoad} />
           <Stat
             label="Positions net"
             value={nav ? formatUsd(nav.positionsNetUsd) : "—"}
-            hint={nav && nav.pendingCollateralUsd > 0 ? `+${formatUsd(nav.pendingCollateralUsd)} pending` : undefined}
             loading={firstLoad}
           />
         </section>

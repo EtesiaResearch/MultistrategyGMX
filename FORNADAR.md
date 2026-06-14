@@ -310,6 +310,19 @@ Goal: replicate the FULL hlnative book, stop dropping legs, keep ops safety. Thr
    { PAXG: "GOLD" }` in the adapter (PAXG ≈ XAU, $4224≈$4234). Re-verified XMR ($341) IS on GMX — kept.
    Net: the full 11-leg book maps, **`notOnGmx: []`, nothing dropped**.
 
+## 2026-06-14 — Live bug: nav-cycle threw on settleRedeem → /status + /history stuck at "—"
+
+Railway logs (DRY_RUN=false, signalSource:"signals" ✓, 10 shorts mirroring, NAV $100.23) showed every
+nav-cycle: pushNav ✓ → settleDeposit ✓ → **settleRedeem REVERTED** (`writeContract failed for
+settleRedeem`, custom Lagoon error viem can't decode). Lagoon's `settleDeposit` commits the proposed
+NAV and settles BOTH sides (+ re-prices), so the follow-up `settleRedeem(sameNav)` re-commits an
+already-consumed NAV → revert. Simulate passed (ran before settleDeposit's effect), write reverted.
+The throw marked the cycle failed → `status.lastNav` never set → `/status.nav` null (dashboard cards
+"—") and `/history` stopped growing once live. **Fix:** call `settleRedeem` only if `settleDeposit`
+skipped. 41 tests green. (Chart Y-axis clipping was fixed separately on the web side.)
+
+---
+
 Verified DRY at NAV $99.91: **11 steps, all legs placed** — BTC $11.2, ETH flip (close $15→short $8.4),
 SOL $7.1, AVAX $6.6, BNB $5.9, DOGE $5.6, SUI $5.0, LINK $8.1, XRP $10.1, **GOLD $31.7** (PAXG's ~29%
 weight preserved). Σ|notional| ≈ NAV (gross lev 1). Adapter logs the mapped-vs-dropped split. 41 tests
