@@ -5,6 +5,7 @@ import { pino, type LoggerOptions } from "pino";
 import { canBroadcast, loadConfig } from "./config.js";
 import { makeAccount, makePublicClient, makeWalletClient } from "./clients.js";
 import type { Address } from "viem";
+import type { StatusResponse } from "@etesia/shared";
 import { makeGmxSdk } from "./gmx/sdk.js";
 import { makeSignalSource } from "./signal/index.js";
 import { runStartupCheck } from "./startup-check.js";
@@ -94,23 +95,24 @@ async function main(): Promise<void> {
   // For a real deployment, scope `origin` to the web origin.
   await app.register(cors, { origin: "*" });
   app.get("/healthz", () => ({ status: "ok", chainId: cfg.CHAIN_ID, dryRun: cfg.DRY_RUN }));
-  app.get("/status", () => ({
-    signalSource: signalSource.name,
-    signer: account?.address ?? null,
-    vault: cfg.VAULT_ADDRESS ?? null,
-    dryRun: cfg.DRY_RUN,
-    lastTradeAt: status.lastTradeAt,
-    lastTradeOk: status.lastTradeOk,
-    lastNavAt: status.lastNavAt,
-    lastNav: status.lastNav
-      ? {
-          navUsdc6: status.lastNav.navUsdc6.toString(),
-          navUsd: Number(status.lastNav.navUsdc6) / 1e6,
-          pushed: status.lastNav.pushed,
-          settled: status.lastNav.settled,
-        }
-      : null,
-  }));
+  app.get("/status", (): StatusResponse => {
+    const n = status.lastNav;
+    return {
+      chainId: cfg.CHAIN_ID,
+      vault: cfg.VAULT_ADDRESS ?? null,
+      signer: account?.address ?? null,
+      signalSource: signalSource.name,
+      dryRun: cfg.DRY_RUN,
+      updatedAt: status.lastNavAt,
+      nav: n?.nav ?? null,
+      positions: n?.positions ?? [],
+      vaultState: n?.vaultState ?? null,
+      pushed: n?.pushed ?? false,
+      settled: n?.settled ?? { deposit: false, redeem: false },
+      lastTradeAt: status.lastTradeAt,
+      lastTradeOk: status.lastTradeOk,
+    };
+  });
   await app.listen({ port: cfg.PORT, host: "0.0.0.0" });
   logger.info({ port: cfg.PORT }, "http server listening (/healthz, /status)");
 

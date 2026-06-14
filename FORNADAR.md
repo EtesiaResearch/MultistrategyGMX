@@ -163,3 +163,35 @@ No `WEB_ORIGIN` env / allowlist. Verified: `GET /status` → `access-control-all
 204. **Revert to a scoped origin for any real deployment.**
 
 **33/33 tests green; typecheck clean.**
+
+---
+
+## 2026-06-14 — Monorepo restructure + UIVaultHL front port
+
+**pnpm workspace** (`apps/*`, `packages/*`):
+- `apps/backend/` — the service (moved `src/scripts/tests/.env*/tsconfig` here; `@etesia/backend`).
+- `apps/web/` — Next.js 15 read-only dashboard (`@etesia/web`).
+- `packages/shared/` — `@etesia/shared`: chain (42161), VAULT_ADDRESS, EXPECTED_EOA, USDC/WETH, vault +
+  usdc ABIs, and the **`StatusResponse`** contract. Backend re-exports the ABIs from here and pulls
+  config defaults from here; web imports addresses + StatusResponse. Single source of truth.
+- Run via `tsx` (no build); `@etesia/shared` is consumed as TS source (`exports: ./src/index.ts`,
+  `transpilePackages` in next.config). **shared internal re-exports are extensionless** — `.js` broke
+  Next's webpack resolver; extensionless works under tsc Bundler + tsx + webpack alike.
+
+**`/status` now emits the shared `StatusResponse`** (chainId, vault, nav breakdown, positions,
+vaultState{totalAssets, totalSupply, sharePrice}, pushed/settled). nav-cycle builds the snapshot and
+reads vault state for share price. **Read-only NAV**: `sdk.setAccount(EXPECTED_EOA)` + nav-cycle uses
+E's address even with no signer, so the dashboard shows live vault data without a key.
+
+**Front port (read-only, pragmatic):** UIVaultHL's `apps/web` is a big monorepo app coupled to an HL
+indexer (`/api/portfolio/current`, fills, pnl, metrics) + Lagoon GraphQL. Per Nadar's note (read-only
+demo; deposit/redeem can stay on the Lagoon page), I kept the **Etesia theme** (tailwind palette,
+fonts, globals.css) and built a focused dashboard wired to my `/status`, dropping the wagmi/indexer/
+Lagoon-GraphQL apparatus. Repointed chain → Arbitrum, vault → `@etesia/shared`. `next build` ✓ (static),
+serves the dashboard (NAV / share price / idle / positions + Lagoon + Arbiscan links), polling /status
+every 5s. The richer components (charts/fills/flows/deposit) can be layered back by pointing their
+hooks at the backend later.
+
+**CORS:** `@fastify/cors` `origin:'*'` (hackathon-only) so the web reads `/status` from any origin.
+
+**All 3 packages typecheck; 33/33 backend tests green; backend + web verified running together.**

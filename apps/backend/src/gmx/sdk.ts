@@ -25,6 +25,8 @@ export function makeGmxSdk(cfg: Config = loadConfig()): GmxSdk {
     config.walletClient = walletClient as unknown as NonNullable<GmxSdkConfig["walletClient"]>;
   }
   const sdk = new GmxSdk(config);
-  if (walletClient?.account) sdk.setAccount(walletClient.account.address);
+  // Set the account for reads (positions/orders) even with no signer — read-only NAV
+  // works against E's on-chain state. With a key, the signer address is the same E.
+  sdk.setAccount(walletClient?.account?.address ?? (cfg.EXPECTED_EOA as `0x${string}`));
   return sdk;
 }

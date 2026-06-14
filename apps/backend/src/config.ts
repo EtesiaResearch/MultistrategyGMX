@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { CHAIN_ID, EXPECTED_EOA, USDC_ADDRESS, VAULT_ADDRESS, WETH_ADDRESS } from "@etesia/shared";
 
 // 0x-prefixed 32-byte hex private key.
 const pkSchema = z
@@ -17,16 +18,16 @@ const ConfigSchema = z.object({
   // Network
   ARBITRUM_RPC: z.string().url().default("https://arb1.arbitrum.io/rpc"),
   GMX_ORACLE_URL: z.string().url().default("https://arbitrum-api.gmxinfra.io"),
-  CHAIN_ID: z.coerce.number().int().positive().default(42161),
+  CHAIN_ID: z.coerce.number().int().positive().default(CHAIN_ID),
 
   // Hot wallet — optional in dev (read-only / simulate), required to broadcast.
   HOT_PK: pkSchema.optional(),
   // The single hot EOA address (E) = GMX trader = valuationManager = curator/safe.
   // The startup check asserts privateKeyToAccount(HOT_PK).address === EXPECTED_EOA.
-  EXPECTED_EOA: addressSchema.default("0xee94E1A5534A70231DaEE670b51fEC50AC032b6A"),
+  EXPECTED_EOA: addressSchema.default(EXPECTED_EOA),
 
   // Lagoon vault on Arbitrum One (deployed; both roles = E).
-  VAULT_ADDRESS: addressSchema.default("0x7f6c5ed71ca969168247958057fcfe06c68ad5a2"),
+  VAULT_ADDRESS: addressSchema.default(VAULT_ADDRESS),
   SILO_ADDRESS: addressSchema.optional(),
 
   // GMX V2 contracts (Arbitrum One — verified 2026-06-14, see .claude/gmx.md).
@@ -36,8 +37,8 @@ const ConfigSchema = z.object({
   GMX_DATASTORE: addressSchema.default("0xFD70de6b91282D8017aA4E741e9Ae325CAb992d8"),
   GMX_READER: addressSchema.default("0x470fbC46bcC0f16532691Df360A07d8Bf5ee0789"),
   GMX_REFERRAL_STORAGE: addressSchema.default("0xe6fab3F0c7199b0d34d7FbE83394fc0e0D06e99d"),
-  USDC_ADDRESS: addressSchema.default("0xaf88d065e77c8cC2239327C5EDb3A432268e5831"),
-  WETH_ADDRESS: addressSchema.default("0x82aF49447D8a07e3bd95BD0d56f35241523fBab1"),
+  USDC_ADDRESS: addressSchema.default(USDC_ADDRESS),
+  WETH_ADDRESS: addressSchema.default(WETH_ADDRESS),
 
   // Trading params
   TARGET_LEVERAGE: z.coerce.number().positive().default(2),

@@ -27,58 +27,57 @@ The hot EOA is simultaneously the **GMX trader**, the Lagoon **valuationManager*
 **curator/safe** — so NAV push and settle are plain EOA calls (no Zodiac, no Safe-tx), and settled
 deposits land straight in the trading EOA.
 
-## Layout
+## Monorepo layout (pnpm workspace)
 
 ```
-src/
-  config.ts            zod env (DRY_RUN master switch, leverage, caps, cadences)
-  clients.ts           viem Arbitrum public/wallet clients + hot account
-  index.ts             boot, /healthz + /status, two cron cycles, graceful shutdown
-  gmx/
-    converters.ts      1e30 USD ↔ USDC 6dp ↔ number, acceptablePrice, collateral sizing  (tested)
-    markets.ts         SYMBOL → GMX market (USDC-collateralized perps)
-    positions.ts       Reader positions → signed notional + netValue
-    executor.ts        increase (orders.long/short), decrease (getDecreasePositionAmounts), keeper poll
-    reconcile.ts       PURE planner: diff/flip/trim/grow/flatten/min-order/notional-cap  (tested)
-    run-reconcile.ts   executes a plan (keeper-aware ordering)
-    sdk.ts             GmxSdk init
-  signal/              Target/SignalSource; mock + hlnative (HTTP) + factory
-  nav/
-    assemble.ts        PURE NAV math (idle + Σ netValue + Σ pending collateral)  (tested)
-    compute.ts         fetches balances/positions/orders and assembles NAV
-    push.ts            sanityCheckNav (first-NAV-0 + divergence, tested) + updateNewTotalAssets
-  settle/execute.ts    settleDeposit/settleRedeem (direct EOA, no Zodiac)
-  crons/               trade-cycle, nav-cycle
-scripts/
-  probe-markets.ts     read-only: prove SDK + markets + pricing live (no funds)
-  snapshot.ts          demo dashboard: NAV breakdown + positions + vault share price
-  nav-validation.ts    empirical NAV harness (open→hold→close, asserts ΔNAV ≈ fees) — needs funds
+apps/backend/        the GMX-aware NAV oracle + executor service (TS, tsx, node-cron, Fastify)
+  src/
+    config.ts        zod env (DRY_RUN master switch, leverage, caps, cadences) — addrs from @etesia/shared
+    startup-check.ts fail-fast: HOT_PK controls E, vault owner/safe = E, asset = USDC
+    index.ts         boot, CORS, /healthz + /status (StatusResponse), two cron cycles
+    gmx/             converters (tested), markets, positions, executor, reconcile (tested), sdk
+    signal/          Target/SignalSource; mock + hlnative (HTTP) + factory
+    nav/             assemble (tested), compute, push (sanity guards, tested)
+    settle/execute   settleDeposit/settleRedeem (direct EOA, no Zodiac)
+    crons/           trade-cycle, nav-cycle (emits the /status snapshot)
+  scripts/           probe-markets, snapshot, nav-validation
+apps/web/            Next.js 15 read-only dashboard — consumes backend /status, Arbitrum-repointed
+  src/app/page.tsx   NAV / share price / idle / positions + Lagoon + Arbiscan links
+packages/shared/     single source of truth: chain (42161), VAULT_ADDRESS, EXPECTED_EOA, ABIs,
+                     StatusResponse contract (imported by BOTH backend and web)
 .claude/gmx.md, .claude/lagoon.md   verified addresses/enums/decimals/APIs
-FORNADAR.md            decision log
+FORNADAR.md          decision log
 ```
 
 ## Run
 
 ```bash
 pnpm install
-cp .env.example .env
-pnpm typecheck && pnpm test         # 32 unit tests (converters, reconcile, NAV math, sanity guards)
-pnpm tsx scripts/probe-markets.ts   # live read-only sanity (no funds/signer needed)
-pnpm dev                            # boots the service; DRY_RUN=true by default
+cp apps/backend/.env.example apps/backend/.env   # backend env (addresses pre-filled)
+pnpm typecheck                                   # all 3 packages
+pnpm test                                        # 33 backend unit tests
+pnpm --filter @etesia/backend exec tsx scripts/probe-markets.ts   # live read-only sanity (no funds)
+
+pnpm dev:backend    # the service on :8080 (DRY_RUN=true by default; /status + /healthz, CORS open)
+pnpm dev:web        # the dashboard on :3001 (NEXT_PUBLIC_BACKEND_URL → backend)
 ```
 
 In `DRY_RUN=true` (default) the service computes NAV and logs the reconcile plan but **never
-broadcasts**. `/status` shows last NAV + last trade cycle.
+broadcasts**. Even read-only (no `HOT_PK`) it serves live vault data on `/status` (reads E's address).
+The web dashboard polls `/status` every 5s.
 
 ## Going live (needs Nadar)
 
-1. Deploy the Lagoon vault on Arbitrum (asset = USDC, async, name "Etesia GMX"); set **both
-   valuationManager AND curator/safe to the hot EOA**. Put `VAULT_ADDRESS` (+ `SILO_ADDRESS`) in `.env`.
-2. Fund the hot EOA with **ETH** (gas + GMX execution fees) and **USDC** on Arbitrum.
-3. Set `HOT_PK` (never commit it) and approve USDC to the **SyntheticsRouter**
-   (`0x7452c558d45f8afC8c83dAe62C3f8A5BE19c71f6`) once.
-4. Push the **first NAV = 0** while the vault is empty: the `STRICT_FIRST_NAV_ZERO` guard enforces this.
-5. Flip `DRY_RUN=false`. Validate with `pnpm tsx scripts/nav-validation.ts`.
+Vault (`0x7f6c…5a2`) and E (`0xee94…b6A`) are already wired (`packages/shared`). Then:
+
+1. Ensure **E holds ZERO personal USDC** (NAV idle = `balanceOf(E)`); only ETH for gas + exec fee.
+2. Set `HOT_PK` in `apps/backend/.env` (never commit). Boot aborts unless it controls E and the vault
+   roles resolve to E.
+3. Push the **first NAV = 0** while the vault is empty (`STRICT_FIRST_NAV_ZERO` enforces it); approve
+   USDC to the **SyntheticsRouter** (`0x7452…Cc68…` → see `.claude/gmx.md`) once.
+4. Flip `DRY_RUN=false`. Validate with `pnpm --filter @etesia/backend exec tsx scripts/nav-validation.ts`.
+
+See `DEMO.md` for the full go-live sequence (E holds 0 personal USDC → deposit from wallet D → settle).
 
 ## Demo
 

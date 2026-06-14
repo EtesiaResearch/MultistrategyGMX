@@ -1,10 +1,11 @@
-# pnpm 10 settings file (single-package repo — no `packages` workspace globs).
-# minimumReleaseAge: supply-chain guard — refuse npm versions newer than N minutes
-# (1440 = 24h). Forces resolution to a slightly older, vetted release.
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# pnpm 10 settings. minimumReleaseAge: supply-chain guard — refuse npm versions
+# newer than N minutes (1440 = 24h), forcing a slightly older, vetted release.
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
-  # @gmx-io/sdk ships frequently and we pin a known-good 1.6.3; don't let the
-  # age guard force a stale resolution of the one SDK the whole executor rides on.
   - '@gmx-io/sdk'
 onlyBuiltDependencies:
   - esbuild

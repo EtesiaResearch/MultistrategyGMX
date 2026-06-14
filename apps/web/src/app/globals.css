@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  background-color: #0e1f23; /* bg token */
+  color: #e8efef; /* ink token */
+}
+
+/* Visible focus rings in accent — keyboard users must always see focus. */
+:focus-visible {
+  outline: 2px solid #3da5b0; /* accent token */
+  outline-offset: 2px;
+}
+
+/* Numbers that align in columns use IBM Plex Mono + tabular figures. */
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
