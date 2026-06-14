@@ -45,11 +45,6 @@ export default function Page(): React.JSX.Element {
             />
             {error ? "backend offline" : data ? "live" : "connecting…"}
           </span>
-          {data ? (
-            <span className="hidden rounded-full border border-border bg-surface px-3 py-1 text-muted sm:inline">
-              {data.dryRun ? "DRY_RUN" : "LIVE"}
-            </span>
-          ) : null}
           <ConnectButton />
         </div>
       </TopBar>
