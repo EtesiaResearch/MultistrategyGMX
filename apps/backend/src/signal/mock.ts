@@ -1,7 +1,7 @@
 import type { SignalSource, Target } from "./types.js";
 
 // Hardcoded targets for Phases 1-3 and demo flips. Swap the returned set (or wire
-// an env override) to drive the executor without the live hlnative feed.
+// an env override) to drive the executor without the live signals feed.
 export class MockSignalSource implements SignalSource {
   readonly name = "mock";
   constructor(private readonly targets: Target[] = DEFAULT_TARGETS) {}

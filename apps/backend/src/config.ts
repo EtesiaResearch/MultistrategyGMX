@@ -52,12 +52,14 @@ const ConfigSchema = z.object({
   MAX_TOTAL_NOTIONAL_USD: z.coerce.number().positive().default(200),
   ACCEPTABLE_PRICE_SLIPPAGE_BPS: z.coerce.number().int().nonnegative().default(150),
 
-  // Signal source. "flat" = no targets → bot closes everything and stays flat.
-  SIGNAL_SOURCE: z.enum(["mock", "hlnative", "flat"]).default("mock"),
-  HLNATIVE_BASE_URL: z.string().url().default("http://localhost:4000"),
+  // Signal source: "mock" (hardcoded), "signals" (Etesia quant signals API),
+  // "flat" (no targets → close everything and stay flat).
+  SIGNAL_SOURCE: z.enum(["mock", "signals", "flat"]).default("mock"),
+  // Base URL of the signals API (exposes the target book at GET /api/positions).
+  SIGNALS_URL: z.string().url().default("http://localhost:4000"),
   // Static fallback scale (used when MIRROR_DYNAMIC=false).
   MIRROR_SCALE: z.coerce.number().positive().default(1),
-  // Dynamic mirror: normalize the hlnative book so Σ|notional| = NAV × MIRROR_GROSS_LEVERAGE
+  // Dynamic mirror: normalize the signals book so Σ|notional| = NAV × MIRROR_GROSS_LEVERAGE
   // (a proportional replica that auto-resizes as NAV grows). On by default.
   MIRROR_DYNAMIC: boolSchema.default("true"),
   MIRROR_GROSS_LEVERAGE: z.coerce.number().positive().default(1),

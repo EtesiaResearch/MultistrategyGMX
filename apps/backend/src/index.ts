@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   const walletClient = makeWalletClient(cfg);
   const account = makeAccount(cfg);
   const sdk = makeGmxSdk(cfg);
-  // NAV provider for the dynamic hlnative mirror — reads E's live NAV (idle + positions).
+  // NAV provider for the dynamic signals mirror — reads E's live NAV (idle + positions).
   const readAccount = (account?.address ?? cfg.EXPECTED_EOA) as Address;
   const navProvider = async (): Promise<number> => {
     const bundle = await loadMarkets(sdk);

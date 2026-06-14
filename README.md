@@ -8,7 +8,7 @@ node-cron + Fastify).
 ## Architecture
 
 ```
- signal source (mock | hlnative GET /api/positions)
+ signal source (mock | signals API: GET /api/positions)
         │ targets: [{ symbol, signedNotionalUsd }]
         ▼
  ┌──────────────────────────── one node service ────────────────────────────┐
@@ -36,7 +36,7 @@ apps/backend/        the GMX-aware NAV oracle + executor service (TS, tsx, node-
     startup-check.ts fail-fast: HOT_PK controls E, vault owner/safe = E, asset = USDC
     index.ts         boot, CORS, /healthz + /status (StatusResponse), two cron cycles
     gmx/             converters (tested), markets, positions, executor, reconcile (tested), sdk
-    signal/          Target/SignalSource; mock + hlnative (HTTP) + factory
+    signal/          Target/SignalSource; mock + remote signals API (HTTP) + factory
     nav/             assemble (tested), compute, push (sanity guards, tested)
     settle/execute   settleDeposit/settleRedeem (direct EOA, no Zodiac)
     crons/           trade-cycle, nav-cycle (emits the /status snapshot)

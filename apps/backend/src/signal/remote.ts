@@ -2,17 +2,18 @@ import type { Logger } from "pino";
 import { normalizeTargets, topNTargets } from "./scale.js";
 import type { GetTargetsContext, SignalSource, Target } from "./types.js";
 
-// hlnative exposes the live book at GET /api/positions (open, no auth):
-//   { positions: [{ instrumentKey: "BTC_USDC_USDC", baseUnits: <signed>, notionalUsd: <abs>, ... }] }
-// We mirror it: map BASE_USDC_USDC -> BASE (GMX index symbol), drop RWA (XYZ_*),
-// then scale (dynamic NAV-proportional, or static) to this vault's size.
-interface HlPosition {
+// Collects Etesia's quant signals from the strategy engine's HTTP API. The engine
+// publishes its current target book at GET /api/positions (open, read-only):
+//   { positions: [{ instrumentKey: "BTC_USDC_USDC", baseUnits: <signed>, notionalUsd: <abs> }] }
+// We map each instrument to a GMX index symbol, drop the engine's RWA instruments,
+// then scale (dynamic NAV-proportional, or static) to this vault's size and execute on GMX.
+interface SignalPosition {
   instrumentKey: string;
   baseUnits: number;
   notionalUsd: number;
 }
 
-export interface HlnativeOpts {
+export interface RemoteSignalOpts {
   dynamic: boolean;
   mirrorScale: number;
   grossLeverage: number;
@@ -20,34 +21,34 @@ export interface HlnativeOpts {
   navProvider?: () => Promise<number>; // current vault NAV in USD (for dynamic scaling)
 }
 
-// hlnative base symbol -> GMX index symbol. Identity for most. PAXG (Pax Gold, a
-// gold-price token) maps to GMX's XAU/USD synthetic perp, whose index symbol is "GOLD"
-// (verified ~$4234 == gold). GMX also lists SILVER (XAG/USD) if a silver ticker appears.
-const HL_TO_GMX_SYMBOL: Record<string, string> = {
+// Signal instrument base -> GMX index symbol. Identity for most. PAXG (a gold-price
+// token) maps to GMX's XAU/USD synthetic perp, whose index symbol is "GOLD" (verified
+// ~$4234 == gold). GMX also lists SILVER (XAG/USD) if a silver ticker ever appears.
+const SOURCE_TO_GMX_SYMBOL: Record<string, string> = {
   PAXG: "GOLD",
 };
 
 function gmxSymbol(instrumentKey: string): string | null {
-  // XYZ_* are hlnative's RWA (xyz builder dex) — out of scope (crypto + gold only).
+  // XYZ_* are the engine's RWA instruments — out of scope here (crypto + gold only).
   if (instrumentKey.startsWith("XYZ_")) return null;
   const base = instrumentKey.split("_")[0];
   if (!base || base.length === 0) return null;
-  return HL_TO_GMX_SYMBOL[base] ?? base;
+  return SOURCE_TO_GMX_SYMBOL[base] ?? base;
 }
 
-export class HlnativeSignalSource implements SignalSource {
-  readonly name = "hlnative";
+export class RemoteSignalSource implements SignalSource {
+  readonly name = "signals";
   constructor(
     private readonly baseUrl: string,
-    private readonly opts: HlnativeOpts,
+    private readonly opts: RemoteSignalOpts,
     private readonly logger?: Logger,
   ) {}
 
   async getTargets(ctx?: GetTargetsContext): Promise<Target[]> {
     const url = `${this.baseUrl.replace(/\/$/, "")}/api/positions`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`hlnative ${url} -> ${res.status}`);
-    const body = (await res.json()) as { positions?: HlPosition[] };
+    if (!res.ok) throw new Error(`signals API ${url} -> ${res.status}`);
+    const body = (await res.json()) as { positions?: SignalPosition[] };
 
     // Raw signed notionals (unscaled), RWA dropped.
     const raw: Target[] = [];
@@ -62,9 +63,9 @@ export class HlnativeSignalSource implements SignalSource {
       if (sign !== 0) raw.push({ symbol, signedNotionalUsd: sign * Math.abs(p.notionalUsd) });
     }
 
-    // Drop legs GMX can't trade BEFORE scaling — otherwise an untradable leg (e.g. PAXG,
-    // the biggest in the book) inflates the gross denominator and shrinks every tradable
-    // leg below the order floor. Scaling must be over the legs we'll actually place.
+    // Drop legs GMX can't trade BEFORE scaling — otherwise an untradable leg (e.g. the
+    // largest in the book) inflates the gross denominator and shrinks every tradable leg
+    // below the order floor. Scaling must be over the legs we'll actually place.
     const notSupported: string[] = [];
     const tradable = ctx?.supportedSymbols
       ? raw.filter((t) => {
@@ -88,7 +89,7 @@ export class HlnativeSignalSource implements SignalSource {
     this.logger?.info(
       {
         rawCount: raw.length,
-        mapped: tradable.map((t) => t.symbol), // hlnative legs replicated on GMX (post-symbol-map)
+        mapped: tradable.map((t) => t.symbol), // signal legs replicated on GMX (post-symbol-map)
         notOnGmx: notSupported, // mapped but GMX has no market (genuinely impossible)
         skippedRwa: skipped, // XYZ_* RWA, out of scope
         scaledCount: targets.length,
@@ -96,7 +97,7 @@ export class HlnativeSignalSource implements SignalSource {
           ? `dynamic(nav=${navUsd.toFixed(2)}x${this.opts.grossLeverage})`
           : `static(x${this.opts.mirrorScale})`,
       },
-      "hlnative targets — mapped vs dropped",
+      "signals — mapped vs dropped",
     );
     return targets;
   }

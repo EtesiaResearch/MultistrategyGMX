@@ -1,6 +1,6 @@
 # Demo script — Etesia GMX
 
-One-liner: *"Etesia's HL-native crypto signals, now executing onchain on GMX/Arbitrum, wrapped in an
+One-liner: *"Etesia's quant signals, executing onchain on GMX V2 / Arbitrum, wrapped in an
 institutional ERC-7540 vault with a GMX-aware NAV oracle — built in under a day."*
 
 Prereqs: vault deployed (`0x7f6c5ed71ca969168247958057fcfe06c68ad5a2`, valuationManager + curator/safe
@@ -45,8 +45,8 @@ Open `https://app.lagoon.finance/vault/42161/<VAULT_ADDRESS>` — real ERC-7540 
   the live GMX portfolio.
 
 ## 5. Flip / close → NAV + share price move
-- Switch the mock target to `DEMO_FLIP` (short) or `DEMO_FLAT` (close), or point `SIGNAL_SOURCE=hlnative`
-  at a running hlnative. The reconciler closes/flips on GMX; NAV and share price move accordingly.
+- Switch the mock target to `DEMO_FLIP` (short) or `DEMO_FLAT` (close), or set `SIGNAL_SOURCE=signals`
+  to track the live signals API. The reconciler closes/flips on GMX; NAV and share price move accordingly.
 - LP `requestRedeem`; nav-cycle `settleRedeem`; LP claims USDC.
 
 ## Live dashboard
