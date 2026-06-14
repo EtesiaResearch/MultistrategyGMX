@@ -14,6 +14,7 @@ import { formatUsd } from "@/lib/format";
 import { Stat } from "@/components/Stat";
 import { PositionsTable } from "@/components/PositionsTable";
 import { VaultChart } from "@/components/VaultChart";
+import { ChainCard } from "@/components/ChainCard";
 import { TopBar } from "@/components/TopBar";
 import { ConnectButton } from "@/components/ConnectButton";
 import { WrongChainBanner } from "@/components/WrongChainBanner";
@@ -52,7 +53,7 @@ export default function Page(): React.JSX.Element {
       <main className="mx-auto max-w-6xl px-6 py-10">
         <header>
           <h1 className="text-2xl font-semibold text-ink">Etesia GMX</h1>
-          <p className="mt-1 text-sm text-muted">Systematic strategy vault on GMX V2 · Arbitrum</p>
+          <p className="mt-1 text-sm text-muted">Systematic strategy vault on GMX V2</p>
         </header>
 
         <WrongChainBanner />
@@ -65,13 +66,13 @@ export default function Page(): React.JSX.Element {
         ) : null}
 
         <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <ChainCard />
           <Stat label="NAV" value={nav ? formatUsd(nav.navUsd) : "—"} loading={firstLoad} />
           <Stat
             label="Share price"
             value={sharePrice != null ? sharePrice.toFixed(4) : "—"}
             loading={firstLoad}
           />
-          <Stat label="Idle USDC" value={nav ? formatUsd(nav.idleUsd) : "—"} loading={firstLoad} />
           <Stat
             label="Positions net"
             value={nav ? formatUsd(nav.positionsNetUsd) : "—"}
