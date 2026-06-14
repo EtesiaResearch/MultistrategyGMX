@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { fetchHistory, type HistorySample } from "@/lib/status";
+import { fetchLagoonHistory, type SeriesPoint, type VaultHistory } from "@/lib/lagoon";
 import { formatUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -21,18 +21,13 @@ const tipFmt = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
 });
 
-interface Point {
-  t: number;
-  v: number;
-}
-
 function ChartTooltip({
   active,
   payload,
   metric,
 }: {
   active?: boolean;
-  payload?: ReadonlyArray<{ payload: Point }>;
+  payload?: ReadonlyArray<{ payload: SeriesPoint }>;
   metric: Metric;
 }): React.JSX.Element | null {
   const p = active && payload && payload.length > 0 ? payload[0]!.payload : null;
@@ -48,19 +43,19 @@ function ChartTooltip({
 }
 
 export function VaultChart(): React.JSX.Element {
-  const { data, error } = useSWR<HistorySample[]>("history", fetchHistory, {
-    refreshInterval: 15_000,
+  // Sourced from Lagoon's indexer (on-chain settlement history) — durable,
+  // survives backend redeploys, nothing stored on our side.
+  const { data, error } = useSWR<VaultHistory>("lagoon-history", fetchLagoonHistory, {
+    refreshInterval: 60_000,
     keepPreviousData: true,
   });
   const [metric, setMetric] = useState<Metric>("price");
   const [range, setRange] = useState<Range>("ALL");
 
-  const points = useMemo<Point[]>(() => {
-    const all = data ?? [];
+  const points = useMemo<SeriesPoint[]>(() => {
+    const all = (metric === "price" ? data?.sharePrice : data?.nav) ?? [];
     const cutoff = range === "ALL" ? 0 : (all.at(-1)?.t ?? 0) - RANGE_MS[range];
-    return all
-      .filter((s) => s.t >= cutoff && (metric === "price" ? s.sharePrice != null : true))
-      .map((s) => ({ t: s.t, v: metric === "price" ? (s.sharePrice as number) : s.navUsd }));
+    return all.filter((p) => p.t >= cutoff);
   }, [data, metric, range]);
 
   const up = points.length >= 2 && points.at(-1)!.v >= points[0]!.v;
@@ -111,9 +106,7 @@ export function VaultChart(): React.JSX.Element {
       <div className="h-64">
         {points.length < 2 ? (
           <div className="flex h-full items-center justify-center text-center text-sm text-faint">
-            {error
-              ? "Backend offline — no history."
-              : "Collecting data — the chart fills in after a few NAV cycles."}
+            {error ? "Couldn't load history." : "No settlement history yet."}
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
@@ -149,7 +142,7 @@ export function VaultChart(): React.JSX.Element {
                 content={(props) => (
                   <ChartTooltip
                     active={props.active}
-                    payload={props.payload as ReadonlyArray<{ payload: Point }> | undefined}
+                    payload={props.payload as ReadonlyArray<{ payload: SeriesPoint }> | undefined}
                     metric={metric}
                   />
                 )}
