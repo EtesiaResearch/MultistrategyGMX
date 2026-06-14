@@ -47,7 +47,8 @@ async function main(): Promise<void> {
       publicClient.readContract({ address: vault, abi: vaultAbi, functionName: "totalAssets" }),
       publicClient.readContract({ address: vault, abi: vaultAbi, functionName: "totalSupply" }),
     ]);
-    const pps = totalSupply > 0n ? Number(totalAssets) / Number(totalSupply) : null;
+    // totalAssets = USDC 6dp, totalSupply = shares 18dp → asset units per share.
+    const pps = totalSupply > 0n ? usdc6ToNumber(totalAssets) / (Number(totalSupply) / 1e18) : null;
     logger.info(
       {
         vault,

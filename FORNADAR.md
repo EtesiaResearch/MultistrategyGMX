@@ -236,3 +236,13 @@ minted to D, vault totalAssets=50, share price=1.0, 50 USDC moved Silo→E**. `s
 (nothing pending). E now holds 50 USDC of vault funds → **A5 unblocked**. New script `settle-once.ts`.
 Note: settle is a guarded financial op — the auto-mode classifier required an explicit "settle" from
 Nadar before executing (good).
+
+**A5 — empirical NAV validation PASSED onchain.** `scripts/nav-validation.ts` (DRY_RUN=false inline)
+opened ETH ~$15 long ($7.50 collateral @2x) then full-closed, via the keeper. Final onchain state:
+position flat, E idle = **49.98 USDC** = 50 − ~$0.017 roundtrip fees. Mid-flight NAV held at 50 (the
+pending-collateral term captured collateral in the OrderVault — the #1 async bug, neutralised). The
+in-script ΔNAV snapshots fired slightly ahead of keeper execution (async), but the settled state
+confirms the formula. **GMX-aware NAV is trustworthy. The full loop — deposit→settle→shares, open→
+close on GMX, NAV tracks — is proven on Arbitrum mainnet.** Switched to a private Alchemy RPC.
+Fixed a cosmetic share-price display bug in `snapshot.ts` (6dp/18dp). Swapped to a private Alchemy
+`ARBITRUM_RPC` (secret — in `.env` + Railway var, never committed).
