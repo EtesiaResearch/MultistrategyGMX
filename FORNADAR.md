@@ -195,3 +195,44 @@ hooks at the backend later.
 **CORS:** `@fastify/cors` `origin:'*'` (hackathon-only) so the web reads `/status` from any origin.
 
 **All 3 packages typecheck; 33/33 backend tests green; backend + web verified running together.**
+
+---
+
+## 2026-06-14 — Deploy config: Railway (backend) + Vercel (web)
+
+- Root `Dockerfile` + `railway.json` for the **backend** on Railway: `node:22-slim`, corepack pnpm
+  10.30.1 (pinned via root `packageManager`), `pnpm install --filter "@etesia/backend..."
+  --frozen-lockfile` (skips the web Next toolchain; keeps devDeps for tsx), `CMD pnpm --filter
+  @etesia/backend start`. Healthcheck `/healthz`. Reads Railway's `$PORT`. Lockfile verified in sync
+  (frozen install no-op). **Could not build the image locally — Docker daemon was down; Railway builds it.**
+- **Web** on Vercel: Root Directory = `apps/web`, `vercel.json` framework=nextjs, env
+  `NEXT_PUBLIC_BACKEND_URL` = Railway URL (build-time). Vercel installs the pnpm workspace from root.
+- Secrets: `HOT_PK` is in `apps/backend/.env` (gitignored) locally and set as a **Railway variable** in
+  prod — never committed. `DRY_RUN` stays true until validated. Steps in `DEPLOY.md`.
+
+---
+
+## 2026-06-14 — GO-LIVE A1–A4 executed onchain (Arbitrum mainnet)
+
+Docker image built OK locally (`etesia-backend:test`). HOT_PK provided in `apps/backend/.env`.
+Preflight (`scripts/preflight.ts`) confirmed: key controls E, E holds **0 USDC** + 0.0059 ETH, vault
+owner=safe=E, asset=USDC, **totalSupply=0** (fresh).
+
+- **A1 ✓** E holds 0 personal USDC — already satisfied, nothing moved.
+- **A2 ✓** HOT_PK controls E (`0xee94…b6A`).
+- **A3 ✓** approved USDC → SyntheticsRouter (`0x7452…Cc68`), unlimited (PoC; scope for real prod).
+  tx `0x77f98526008f52d1bcf84a2b5c07689f6f0bc958448f449e0a62e8b8f912060b` (success).
+- **A4 ✓** pushed first NAV = 0 (`updateNewTotalAssets(0)`) on the empty vault; guard allowed it.
+  tx `0x1e682f04c3f8ff183bf639919ab2bba836ee84686874a94fa1b1e0b454e37418` (success, gas 128378).
+- **A5 ⛔ BLOCKED** `nav-validation` opens a real GMX position needing USDC collateral on E, but E
+  holds 0 USDC. Requires an LP deposit from wallet D → settle (USDC Silo→E) first — a human/external
+  step. `DRY_RUN` left **true** (flipping it now would make the trade loop try to open with 0 USDC).
+  New scripts: `preflight.ts`, `approve-usdc.ts`, `push-first-nav-zero.ts`.
+
+**Deposit → settle → shares PROVEN ONCHAIN (50 USDC):** LP (wallet D) `requestDeposit(50 USDC)` on the
+Lagoon page → 50 USDC pending in Silo. Ran `scripts/settle-once.ts` (user-confirmed): computeNav=0 →
+`updateNewTotalAssets(0)` tx `0x7f72674a…` → `settleDeposit(0)` tx `0x43a550a5…`. Result: **50 shares
+minted to D, vault totalAssets=50, share price=1.0, 50 USDC moved Silo→E**. `settleRedeem` skipped
+(nothing pending). E now holds 50 USDC of vault funds → **A5 unblocked**. New script `settle-once.ts`.
+Note: settle is a guarded financial op — the auto-mode classifier required an explicit "settle" from
+Nadar before executing (good).
