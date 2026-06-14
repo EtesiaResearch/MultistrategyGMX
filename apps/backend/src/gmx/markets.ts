@@ -2,6 +2,7 @@ import type { GmxSdk } from "@gmx-io/sdk";
 import type { MarketsInfoData, MarketInfo } from "@gmx-io/sdk/types/markets";
 import type { TokensData } from "@gmx-io/sdk/types/tokens";
 import type { Logger } from "pino";
+import { withRetry } from "../util/retry.js";
 
 export interface MarketsBundle {
   marketsInfoData: MarketsInfoData;
@@ -26,9 +27,14 @@ function preferMarket(current: MarketInfo | undefined, candidate: MarketInfo): M
 }
 
 export async function loadMarkets(sdk: GmxSdk, logger?: Logger): Promise<MarketsBundle> {
-  const { marketsInfoData, tokensData } = await sdk.markets.getMarketsInfo();
+  // Retry until markets AND tokens data come back complete — incomplete data is the
+  // root cause of "empty" position reads (positions referencing unpriced tokens get
+  // dropped). The SDK disables transport retries, so we add our own.
+  const { marketsInfoData, tokensData } = await withRetry(() => sdk.markets.getMarketsInfo(), {
+    retryOn: (r) => !r.marketsInfoData || !r.tokensData,
+  });
   if (!marketsInfoData || !tokensData) {
-    throw new Error("getMarketsInfo returned no marketsInfoData/tokensData");
+    throw new Error("getMarketsInfo returned no marketsInfoData/tokensData after retries");
   }
   const bySymbol = new Map<string, MarketInfo>();
   for (const market of Object.values(marketsInfoData)) {

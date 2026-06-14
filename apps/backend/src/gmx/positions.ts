@@ -2,6 +2,7 @@ import type { GmxSdk } from "@gmx-io/sdk";
 import type { MarketsInfoData } from "@gmx-io/sdk/types/markets";
 import type { TokensData } from "@gmx-io/sdk/types/tokens";
 import type { PositionInfo } from "@gmx-io/sdk/types/positions";
+import { withRetry } from "../util/retry.js";
 import { gmxUsdToNumber } from "./converters.js";
 
 export interface SignedPosition {
@@ -18,11 +19,9 @@ export async function getOpenPositions(
   marketsInfoData: MarketsInfoData,
   tokensData: TokensData,
 ): Promise<PositionInfo[]> {
-  const data = await sdk.positions.getPositionsInfo({
-    marketsInfoData,
-    tokensData,
-    showPnlInLeverage: false,
-  });
+  const data = await withRetry(() =>
+    sdk.positions.getPositionsInfo({ marketsInfoData, tokensData, showPnlInLeverage: false }),
+  );
   return Object.values(data);
 }
 

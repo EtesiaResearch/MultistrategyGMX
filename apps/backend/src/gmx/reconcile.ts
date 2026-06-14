@@ -54,27 +54,13 @@ export function planReconcile(
     const pos = positionsBySymbol.get(symbol);
     const current = pos ? signedNotional(pos) : 0;
     const delta = target - current;
-    if (Math.abs(delta) < cfg.minOrderUsd) continue;
-
     const flip = current !== 0 && target !== 0 && Math.sign(target) !== Math.sign(current);
 
-    if (flip && pos) {
-      steps.push({
-        type: "decrease",
-        symbol,
-        position: pos,
-        closeNotionalUsd: Math.abs(current),
-        fullClose: true,
-        reason: `flip ${current.toFixed(2)} -> ${target.toFixed(2)}`,
-      });
-      steps.push({
-        type: "increase",
-        symbol,
-        isLong: target > 0,
-        notionalUsd: Math.abs(target),
-        reason: `flip open ${target.toFixed(2)}`,
-      });
-    } else if (target === 0 && pos) {
+    // Full close / flatten — ALWAYS allowed, even below MIN_ORDER_USD. GMX lets you
+    // close a position of any size; gating the close on min-order would strand small
+    // positions (e.g. a $14.98 long can never be flattened with a $15 min). The
+    // min-order gate applies only to OPENING/growing exposure, below.
+    if (target === 0 && pos) {
       steps.push({
         type: "decrease",
         symbol,
@@ -83,7 +69,33 @@ export function planReconcile(
         fullClose: true,
         reason: `flatten ${current.toFixed(2)}`,
       });
-    } else if (current === 0) {
+      continue;
+    }
+    if (flip && pos) {
+      steps.push({
+        type: "decrease",
+        symbol,
+        position: pos,
+        closeNotionalUsd: Math.abs(current),
+        fullClose: true,
+        reason: `flip close ${current.toFixed(2)}`,
+      });
+      // Only open the other side if it clears the min order; otherwise just go flat.
+      if (Math.abs(target) >= cfg.minOrderUsd) {
+        steps.push({
+          type: "increase",
+          symbol,
+          isLong: target > 0,
+          notionalUsd: Math.abs(target),
+          reason: `flip open ${target.toFixed(2)}`,
+        });
+      }
+      continue;
+    }
+
+    // Open / grow / trim — gated by MIN_ORDER_USD (don't churn tiny adjustments).
+    if (Math.abs(delta) < cfg.minOrderUsd) continue;
+    if (current === 0) {
       steps.push({
         type: "increase",
         symbol,

@@ -54,9 +54,20 @@ describe("planReconcile", () => {
     expect(steps[1]).toMatchObject({ type: "increase", isLong: false, notionalUsd: 20 });
   });
 
-  it("skips sub-minimum deltas", () => {
-    const { steps } = plan([{ symbol: "BTC", signedNotionalUsd: 30.5 }], [mkPos("BTC", true, 30)]);
-    expect(steps).toHaveLength(0);
+  it("skips sub-minimum GROWS but always closes a sub-minimum position", () => {
+    // grow of +0.5 is below the $15 min -> skipped
+    expect(plan([{ symbol: "BTC", signedNotionalUsd: 30.5 }], [mkPos("BTC", true, 30)]).steps).toHaveLength(0);
+    // a $5 position flattened (target absent) MUST close even though 5 < min 15
+    const { steps } = plan([], [mkPos("ETH", true, 5)]);
+    expect(steps).toEqual([
+      { type: "decrease", symbol: "ETH", position: expect.anything(), closeNotionalUsd: 5, fullClose: true, reason: expect.any(String) },
+    ]);
+  });
+
+  it("flips to a sub-minimum other side -> closes only (goes flat)", () => {
+    const { steps } = plan([{ symbol: "BTC", signedNotionalUsd: -4 }], [mkPos("BTC", true, 30)]);
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({ type: "decrease", fullClose: true, closeNotionalUsd: 30 });
   });
 
   it("scales targets down to the gross notional cap", () => {

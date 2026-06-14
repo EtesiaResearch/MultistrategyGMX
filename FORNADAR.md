@@ -267,7 +267,21 @@ ignoring etesia-curator's lessons (12h settle, gas watchdog). See [[apply-curato
   pending deposit doesn't move computed NAV, so gating the push would stop deposits settling). Needs
   curator's `detectPending` ported first.
 
-**KNOWN BUG flagged:** the SDK `getPositionsInfo` intermittently returns an empty list (nav-cycle saw
-the ETH position, trade-cycle 4s later saw none). Makes `flat` take an extra cycle to close, and risks
-`mock` re-opening duplicates (mitigated: GMX merges same-direction increases). Proper fix = read
-positions via `Reader.getAccountPositions` (ground truth) instead of the SDK's derived view. TODO.
+**ROOT CAUSE corrected (was misdiagnosed as "empty reads"):** `flat` / any flatten refused to close
+the **$14.98** ETH position because `reconcile` gated EVERY delta on `MIN_ORDER_USD=15` — including
+full closes. A probe (`scripts/probe-positions.ts`) showed position reads are reliable (5/5), so the
+`steps: 0` was the min-order gate, not an empty read. **Fix:** `planReconcile` now ALWAYS allows a full
+close / flatten (and a flip's close), gating only opens/grows/trims. Verified: `flat` plans
+`decrease ETH fullClose 14.98`. Tests added (38 total).
+
+**Robustness (2nd-opinion review was right re: the SDK):** the GmxSdk builds its viem clients with
+transport **retries disabled**, and GMX docs say wrap your own retry/backoff — a flaky RPC or partial
+`tokensData` (positions referencing unpriced tokens get dropped) yields a silent empty list. Added
+`util/retry.ts` (`withRetry` w/ exp backoff): `loadMarkets` retries until markets+tokens are COMPLETE
+(the real cure for partial-data empties), `getOpenPositions` retries on error. Kept the trade-cycle
+re-read as a net.
+
+**Still TODO (proper deterministic close-critical read):** read positions via
+`Reader.getAccountPositions` (on-chain ground truth) instead of the SDK's derived `getPositionsInfo`.
+The REST `fetchApiPositionsInfo` is fine for /status display but NOT for reconcile decisions (indexing
+lag can miss a freshly-opened position → duplicate-open risk).
