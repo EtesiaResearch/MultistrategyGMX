@@ -30,7 +30,7 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 export async function increasePosition(
   deps: ExecutorDeps,
   bundle: MarketsBundle,
-  args: { symbol: string; isLong: boolean; notionalUsd: number },
+  args: { symbol: string; isLong: boolean; notionalUsd: number; minCollateralUsd?: number | null },
 ): Promise<OrderOutcome> {
   const { sdk, cfg, logger } = deps;
   const market = getMarket(bundle, args.symbol);
@@ -43,6 +43,18 @@ export async function increasePosition(
     submitted: false,
   };
   if (!market) return { ...base, error: `no GMX market for ${args.symbol}` };
+
+  // Per-leg revert guard (NOT book-thinning): skip only if THIS order's collateral would
+  // fall below GMX's on-chain MIN_COLLATERAL_USD — it would revert + burn gas. The reconcile
+  // floor keeps legs above this, so at a healthy NAV this never fires; log loudly if it does.
+  const collateralUsd = Math.abs(args.notionalUsd) / cfg.TARGET_LEVERAGE;
+  if (args.minCollateralUsd != null && collateralUsd < args.minCollateralUsd) {
+    logger.warn(
+      { symbol: args.symbol, collateralUsd, minCollateralUsd: args.minCollateralUsd, notionalUsd: base.sizeDeltaUsd },
+      "leg below GMX min collateral — skipping this leg (would revert). Add capital to place it.",
+    );
+    return { ...base, error: "below GMX min collateral" };
+  }
 
   const collateralUsdc6 = collateralUsdc6ForNotional(args.notionalUsd, cfg.TARGET_LEVERAGE);
   const leverageBps = BigInt(Math.round(cfg.TARGET_LEVERAGE * 10_000));

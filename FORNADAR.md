@@ -281,7 +281,36 @@ transport **retries disabled**, and GMX docs say wrap your own retry/backoff —
 (the real cure for partial-data empties), `getOpenPositions` retries on error. Kept the trade-cycle
 re-read as a net.
 
-**Still TODO (proper deterministic close-critical read):** read positions via
-`Reader.getAccountPositions` (on-chain ground truth) instead of the SDK's derived `getPositionsInfo`.
-The REST `fetchApiPositionsInfo` is fine for /status display but NOT for reconcile decisions (indexing
-lag can miss a freshly-opened position → duplicate-open risk).
+**DONE — on-chain Reader ground-truth (#3) + top-N mirror (#4):**
+- `gmx/reader-positions.ts`: `getAccountPositionsOnchain` reads `SyntheticsReader.getAccountPositions`
+  (DataStore + account → raw Position.Props, NO prices) — never drops a position. Verified live (1 pos,
+  ETH long $14.98). The trade-cycle now cross-checks the SDK's count against this ground truth and
+  re-reads (fresh markets, backoff) until they match; if still short, it **skips reconcile this cycle**
+  rather than act on a partial view (prevents duplicate-open / missed-close on the close-critical path).
+- `MIRROR_TOP_N` + `topNTargets` (tested): mirror only the N largest hlnative legs so a big book fits a
+  small vault (else every leg falls below MIN_ORDER_USD). 0 = all.
+- 40 tests green. Note: REST `fetchApiPositionsInfo` deliberately NOT used for reconcile (indexing lag).
+
+---
+
+## 2026-06-14 — Faithful full-book mirror at $100 NAV (min-order floor + PAXG→GOLD + scaling fix)
+
+Goal: replicate the FULL hlnative book, stop dropping legs, keep ops safety. Three fixes:
+1. **Min-order floor derived from GMX's real minimum** (not arbitrary $15). `MIN_ORDER_USD` default → 0 =
+   derive `MIN_COLLATERAL_USD (on-chain, DataStore) × TARGET_LEVERAGE × MIN_ORDER_SAFETY_MARGIN(1.5)`,
+   fallback `MIN_ORDER_FALLBACK_USD($5)`. Live: MIN_COLLATERAL_USD=$1 → floor=$3 (was $15). Per-leg
+   revert guard in `increasePosition` (skip + log only if a leg's collateral < on-chain min — never
+   fires at healthy NAV). Top-N stays OFF (`MIRROR_TOP_N=0`) — not a book-thinner.
+2. **Scaling-denominator fix:** the dynamic mirror was scaling the book to NAV using the FULL gross
+   incl. untradable legs → PAXG ($287, ~29%) shrank every other leg below the floor. Now the trade-cycle
+   passes the GMX-supported symbol set into `getTargets(ctx)`; the adapter filters to tradable BEFORE
+   scaling, so the denominator only includes legs we'll place.
+3. **PAXG→GOLD mapping (was wrongly dropped):** GMX HAS gold/silver synthetic perps on Arbitrum — index
+   symbols `GOLD` ($4234 = XAU/USD), `SILVER` ($68 = XAG/USD), plus `XAUT`. Added `HL_TO_GMX_SYMBOL =
+   { PAXG: "GOLD" }` in the adapter (PAXG ≈ XAU, $4224≈$4234). Re-verified XMR ($341) IS on GMX — kept.
+   Net: the full 11-leg book maps, **`notOnGmx: []`, nothing dropped**.
+
+Verified DRY at NAV $99.91: **11 steps, all legs placed** — BTC $11.2, ETH flip (close $15→short $8.4),
+SOL $7.1, AVAX $6.6, BNB $5.9, DOGE $5.6, SUI $5.0, LINK $8.1, XRP $10.1, **GOLD $31.7** (PAXG's ~29%
+weight preserved). Σ|notional| ≈ NAV (gross lev 1). Adapter logs the mapped-vs-dropped split. 41 tests
+green; ops safety (gas watchdog, 15min cadence, NAV divergence, first-NAV-0, Reader ground-truth) intact.

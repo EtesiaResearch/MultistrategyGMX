@@ -14,6 +14,7 @@ import { computeNav } from "./nav/compute.js";
 import { usdc6ToNumber } from "./gmx/converters.js";
 import { tradeCycle } from "./crons/trade-cycle.js";
 import { navCycle, type NavCycleResult } from "./crons/nav-cycle.js";
+import { makeHistoryStore } from "./history.js";
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
@@ -59,6 +60,9 @@ async function main(): Promise<void> {
     usdc: cfg.USDC_ADDRESS as Address,
   });
 
+  // NAV/share-price history for the web chart (loaded from disk, capped in memory).
+  const history = await makeHistoryStore({ path: cfg.HISTORY_PATH, max: cfg.HISTORY_MAX, logger });
+
   // Shared mutable status for the /status endpoint + watchdogs.
   const status = {
     lastTradeAt: 0,
@@ -73,7 +77,7 @@ async function main(): Promise<void> {
     if (status.tradeInFlight) return logger.warn("trade-cycle still in flight; skip");
     status.tradeInFlight = true;
     try {
-      await tradeCycle({ sdk, cfg, logger, signalSource, hasAccount: account !== undefined });
+      await tradeCycle({ sdk, cfg, logger, publicClient, signalSource, hasAccount: account !== undefined });
       status.lastTradeOk = true;
     } catch (err) {
       status.lastTradeOk = false;
@@ -89,7 +93,16 @@ async function main(): Promise<void> {
     status.navInFlight = true;
     try {
       const result = await navCycle({ sdk, cfg, logger, publicClient, walletClient, account: account?.address });
-      if (result) status.lastNav = result;
+      if (result) {
+        status.lastNav = result;
+        history.record({
+          t: Date.now(),
+          navUsd: result.nav.navUsd,
+          sharePrice: result.vaultState?.sharePrice ?? null,
+          positionsNetUsd: result.nav.positionsNetUsd,
+          idleUsd: result.nav.idleUsd,
+        });
+      }
     } catch (err) {
       logger.error({ err }, "nav-cycle failed");
     } finally {
@@ -124,8 +137,13 @@ async function main(): Promise<void> {
       lastTradeOk: status.lastTradeOk,
     };
   });
+  // Time series for the web chart. `?from=<ms>` filters to samples at/after that instant.
+  app.get("/history", (req) => {
+    const from = Number((req.query as { from?: string }).from);
+    return history.list(Number.isFinite(from) && from > 0 ? from : undefined);
+  });
   await app.listen({ port: cfg.PORT, host: "0.0.0.0" });
-  logger.info({ port: cfg.PORT }, "http server listening (/healthz, /status)");
+  logger.info({ port: cfg.PORT }, "http server listening (/healthz, /status, /history)");
 
   // Run one of each immediately so the first sample is fresh.
   await runNav();

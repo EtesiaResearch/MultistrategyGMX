@@ -21,10 +21,16 @@ workspace deps and runs `tsx` (the GMX SDK's ESM build needs tsx, not `node dist
    - *(optional)* `TRADE_CRON`, `NAV_CRON`, `MAX_TOTAL_NOTIONAL_USD`, `TARGET_LEVERAGE`.
    - **Do NOT set `PORT`** — Railway injects it; the service reads `$PORT`.
    - `VAULT_ADDRESS` / `EXPECTED_EOA` are baked into `@etesia/shared`; only override to change them.
+   - *(chart history)* The backend records one NAV/share-price sample per NAV cycle (served at
+     `/history`, powers the web chart). It's written to `HISTORY_PATH` (default `./data/history.ndjson`).
+     Railway's FS is **ephemeral** — to keep the chart across redeploys, add a **Volume** (Service →
+     Volumes) mounted at e.g. `/data` and set `HISTORY_PATH=/data/history.ndjson`. Without a volume the
+     chart simply rebuilds from the next cycle onward.
 3. Deploy. On boot the **startup check** asserts `HOT_PK` controls E and the vault roles resolve to E —
    if not, it aborts (check the logs). Healthcheck hits `/healthz`.
 4. Note the public URL (e.g. `https://etesia-backend.up.railway.app`). Verify:
    `curl -i https://<url>/status` → `access-control-allow-origin: *` and the JSON snapshot.
+   `curl https://<url>/history` → a JSON array of `{t, navUsd, sharePrice, …}` samples.
 
 If the build fails on `--frozen-lockfile`, ensure `pnpm-lock.yaml` is committed and current
 (`pnpm install` locally, commit), or drop `--frozen-lockfile` from the `Dockerfile`.
@@ -37,7 +43,8 @@ If the build fails on `--frozen-lockfile`, ensure `pnpm-lock.yaml` is committed 
    Framework preset: Next.js (also pinned in `apps/web/vercel.json`).
 3. **Environment Variable**: `NEXT_PUBLIC_BACKEND_URL` = the Railway backend URL (no trailing slash).
    It's read at build time, so set it before the first build (and redeploy if it changes).
-4. Deploy. The dashboard polls `<backend>/status` every 5s (CORS is open on the backend).
+4. Deploy. The dashboard polls `<backend>/status` every 5s and `<backend>/history` every 15s for the
+   performance chart (CORS is open on the backend).
 
 ## Order / sanity
 - Deploy the backend first, grab its URL, then set `NEXT_PUBLIC_BACKEND_URL` on Vercel.

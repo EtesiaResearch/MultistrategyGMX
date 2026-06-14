@@ -23,6 +23,7 @@ export function makeSignalSource(
         dynamic: cfg.MIRROR_DYNAMIC,
         mirrorScale: cfg.MIRROR_SCALE,
         grossLeverage: cfg.MIRROR_GROSS_LEVERAGE,
+        topN: cfg.MIRROR_TOP_N,
         ...(navProvider ? { navProvider } : {}),
       },
       logger,

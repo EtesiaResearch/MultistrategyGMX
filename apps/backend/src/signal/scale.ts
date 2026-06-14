@@ -1,5 +1,12 @@
 import type { Target } from "./types.js";
 
+// Keep only the N largest positions by |notional| (n<=0 → keep all). Used to fit a
+// large source book into a small vault without every leg falling below MIN_ORDER_USD.
+export function topNTargets(raw: Target[], n: number): Target[] {
+  if (n <= 0 || raw.length <= n) return raw;
+  return [...raw].sort((a, b) => Math.abs(b.signedNotionalUsd) - Math.abs(a.signedNotionalUsd)).slice(0, n);
+}
+
 export interface ScaleOpts {
   dynamic: boolean;
   mirrorScale: number; // static fallback multiplier

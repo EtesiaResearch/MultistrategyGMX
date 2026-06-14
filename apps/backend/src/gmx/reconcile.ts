@@ -126,6 +126,21 @@ export function planReconcile(
   return { steps, scale, totalTargetUsd };
 }
 
+// The min order notional floor, tied to GMX's on-chain MIN_COLLATERAL_USD so we never
+// send a sub-minimum order (revert + wasted gas) WITHOUT thinning the book. To OPEN a
+// position of notional N at leverage L, collateral = N/L must be >= MIN_COLLATERAL_USD,
+// so the notional floor = MIN_COLLATERAL_USD × L (× a small safety margin). A null
+// minCollateralUsd means the on-chain read failed -> conservative fallback. Pure.
+export function computeMinOrderFloor(
+  minCollateralUsd: number | null,
+  targetLeverage: number,
+  safetyMargin: number,
+  fallbackUsd: number,
+): number {
+  if (minCollateralUsd === null || minCollateralUsd <= 0) return fallbackUsd;
+  return minCollateralUsd * targetLeverage * safetyMargin;
+}
+
 // Build a symbol -> position map (assumes our bot holds at most one side per symbol).
 export function positionsBySymbol(positions: PositionInfo[]): Map<string, PositionInfo> {
   const m = new Map<string, PositionInfo>();

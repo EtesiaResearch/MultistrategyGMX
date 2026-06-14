@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeTargets } from "../../src/signal/scale.js";
+import { normalizeTargets, topNTargets } from "../../src/signal/scale.js";
 import type { Target } from "../../src/signal/types.js";
 
 const raw: Target[] = [
@@ -39,5 +39,23 @@ describe("normalizeTargets", () => {
       { symbol: "BTC", signedNotionalUsd: 1 },
       { symbol: "ETH", signedNotionalUsd: -3 },
     ]);
+  });
+});
+
+describe("topNTargets", () => {
+  const book: Target[] = [
+    { symbol: "A", signedNotionalUsd: 10 },
+    { symbol: "B", signedNotionalUsd: -50 },
+    { symbol: "C", signedNotionalUsd: 30 },
+  ];
+  it("keeps the N largest by |notional|, preserving sign", () => {
+    expect(topNTargets(book, 2)).toEqual([
+      { symbol: "B", signedNotionalUsd: -50 },
+      { symbol: "C", signedNotionalUsd: 30 },
+    ]);
+  });
+  it("n<=0 or n>=length keeps all (unsorted)", () => {
+    expect(topNTargets(book, 0)).toBe(book);
+    expect(topNTargets(book, 5)).toBe(book);
   });
 });

@@ -42,7 +42,13 @@ const ConfigSchema = z.object({
 
   // Trading params
   TARGET_LEVERAGE: z.coerce.number().positive().default(2),
-  MIN_ORDER_USD: z.coerce.number().positive().default(15),
+  // Min order notional. 0 (default) = DERIVE from GMX's on-chain MIN_COLLATERAL_USD
+  // × TARGET_LEVERAGE × MIN_ORDER_SAFETY_MARGIN. The floor exists ONLY to avoid GMX
+  // reverting a sub-minimum order (wasted gas) — NOT to thin the book. Set > 0 to force
+  // an explicit floor (not recommended — strands legs).
+  MIN_ORDER_USD: z.coerce.number().nonnegative().default(0),
+  MIN_ORDER_SAFETY_MARGIN: z.coerce.number().positive().default(1.5),
+  MIN_ORDER_FALLBACK_USD: z.coerce.number().positive().default(5),
   MAX_TOTAL_NOTIONAL_USD: z.coerce.number().positive().default(200),
   ACCEPTABLE_PRICE_SLIPPAGE_BPS: z.coerce.number().int().nonnegative().default(150),
 
@@ -55,6 +61,9 @@ const ConfigSchema = z.object({
   // (a proportional replica that auto-resizes as NAV grows). On by default.
   MIRROR_DYNAMIC: boolSchema.default("true"),
   MIRROR_GROSS_LEVERAGE: z.coerce.number().positive().default(1),
+  // Mirror only the N largest positions (by |notional|). 0 = all. With small capital,
+  // spreading across the whole book puts every leg below MIN_ORDER_USD — cap to the top few.
+  MIRROR_TOP_N: z.coerce.number().int().nonnegative().default(0),
 
   // NAV guards (ported from etesia-curator)
   STRICT_FIRST_NAV_ZERO: boolSchema.default("true"),
@@ -70,6 +79,12 @@ const ConfigSchema = z.object({
   NAV_CRON: z.string().default("*/15 * * * *"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   PORT: z.coerce.number().int().positive().default(8080),
+
+  // NAV/share-price history for the web chart — one ndjson line per NAV cycle,
+  // also mirrored in memory and served at GET /history. On Railway, point this at
+  // a mounted volume to survive redeploys (the container FS is otherwise ephemeral).
+  HISTORY_PATH: z.string().default("./data/history.ndjson"),
+  HISTORY_MAX: z.coerce.number().int().positive().default(5000),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

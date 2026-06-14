@@ -25,6 +25,15 @@ export interface StatusGas {
   low: boolean; // below GAS_MIN_ETH — the bot dies silently when gas runs out
 }
 
+// One historical sample, appended once per NAV cycle. Powers the web chart.
+export interface HistorySample {
+  t: number; // ms since epoch
+  navUsd: number;
+  sharePrice: number | null; // null while supply is 0
+  positionsNetUsd: number;
+  idleUsd: number;
+}
+
 export interface StatusResponse {
   chainId: number;
   vault: string | null;

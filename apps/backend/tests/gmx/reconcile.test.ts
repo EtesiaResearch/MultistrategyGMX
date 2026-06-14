@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PositionInfo } from "@gmx-io/sdk/types/positions";
-import { planReconcile, positionsBySymbol } from "../../src/gmx/reconcile.js";
+import { computeMinOrderFloor, planReconcile, positionsBySymbol } from "../../src/gmx/reconcile.js";
 import { usdToGmxUsd } from "../../src/gmx/converters.js";
 import type { Target } from "../../src/signal/types.js";
 
@@ -68,6 +68,14 @@ describe("planReconcile", () => {
     const { steps } = plan([{ symbol: "BTC", signedNotionalUsd: -4 }], [mkPos("BTC", true, 30)]);
     expect(steps).toHaveLength(1);
     expect(steps[0]).toMatchObject({ type: "decrease", fullClose: true, closeNotionalUsd: 30 });
+  });
+
+  it("derives the min-order floor from GMX min collateral (× leverage × margin), with fallback", () => {
+    // minCollateral $2, leverage 2, margin 1.5 -> floor $6 (so a $7-16 leg clears it)
+    expect(computeMinOrderFloor(2, 2, 1.5, 5)).toBe(6);
+    // read failed (null) -> fallback
+    expect(computeMinOrderFloor(null, 2, 1.5, 5)).toBe(5);
+    expect(computeMinOrderFloor(0, 2, 1.5, 5)).toBe(5);
   });
 
   it("scales targets down to the gross notional cap", () => {

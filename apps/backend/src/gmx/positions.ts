@@ -13,6 +13,17 @@ export interface SignedPosition {
   position: PositionInfo;
 }
 
+// GMX's on-chain minimum collateral per position (USD), from DataStore via the SDK.
+// Returns null if the read fails (caller uses a fallback floor).
+export async function getMinCollateralUsd(sdk: GmxSdk): Promise<number | null> {
+  try {
+    const c = await sdk.positions.getPositionsConstants();
+    return c.minCollateralUsd != null ? gmxUsdToNumber(c.minCollateralUsd) : null;
+  } catch {
+    return null;
+  }
+}
+
 // Read the hot account's open positions. Requires sdk.account to be set.
 export async function getOpenPositions(
   sdk: GmxSdk,
