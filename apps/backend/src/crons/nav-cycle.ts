@@ -8,6 +8,7 @@ import { usdc6ToNumber } from "../gmx/converters.js";
 import { loadMarkets } from "../gmx/markets.js";
 import { computeNav } from "../nav/compute.js";
 import { pushNav } from "../nav/push.js";
+import { withRetry } from "../util/retry.js";
 import { settleDeposit, settleRedeem } from "../settle/execute.js";
 
 export interface NavCycleDeps {
@@ -37,15 +38,28 @@ export async function navCycle(deps: NavCycleDeps): Promise<NavCycleResult> {
 
   // Reads use E's address even without a signer (read-only NAV for the dashboard).
   const readAccount = (account ?? (cfg.EXPECTED_EOA as Address)) as Address;
-  const bundle = await loadMarkets(sdk);
-  const nav = await computeNav({
-    sdk,
-    publicClient,
-    bundle,
-    account: readAccount,
-    usdc: cfg.USDC_ADDRESS as Address,
-    logger,
-  });
+
+  // Read-only preamble (GMX markets + NAV from on-chain positions). Both are pure
+  // reads with no side effects, so retrying the whole block is safe and idempotent.
+  // A single transient GMX-API/RPC blip (e.g. "/markets: Premature close") must not
+  // forfeit the cycle — especially on a slow (once-daily) NAV_CRON where the next
+  // attempt is 24h away. ~31s of backoff (1+2+4+8+16s) rides out a brief outage.
+  // Everything AFTER this — pushNav/settle — has on-chain side effects and is
+  // deliberately NOT retried here (each has its own simulate-then-write guard).
+  const nav = await withRetry(
+    async () => {
+      const bundle = await loadMarkets(sdk, logger);
+      return computeNav({
+        sdk,
+        publicClient,
+        bundle,
+        account: readAccount,
+        usdc: cfg.USDC_ADDRESS as Address,
+        logger,
+      });
+    },
+    { tries: 6, baseMs: 1000 },
+  );
 
   const navSnap: StatusNav = {
     navUsd: usdc6ToNumber(nav.navUsdc6),
