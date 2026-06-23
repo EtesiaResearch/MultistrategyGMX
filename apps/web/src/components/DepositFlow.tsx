@@ -173,11 +173,27 @@ export function DepositFlow({
         })
       : null;
 
-  const fieldError = malformed
-    ? `Invalid amount (max ${assetDecimals} decimals)`
-    : exceeds
-      ? `Exceeds wallet balance (${formatTokenAmount(asset.balance, assetDecimals)} ${assetSymbol})`
-      : asset.balance === 0n
+  // Validation only turns the field red once the user has actually entered an
+  // amount — an untouched field (e.g. just landed on the page with an empty
+  // wallet) must not look alarming. The empty-wallet notice shows as a calm
+  // muted hint until then.
+  const touched = input.trim().length > 0;
+  const emptyWallet = asset.balance === 0n;
+
+  const fieldError = !touched
+    ? undefined
+    : malformed
+      ? `Invalid amount (max ${assetDecimals} decimals)`
+      : emptyWallet
+        ? `No ${assetSymbol} in this wallet`
+        : exceeds
+          ? `Exceeds wallet balance (${formatTokenAmount(asset.balance, assetDecimals)} ${assetSymbol})`
+          : undefined;
+
+  const fieldHint =
+    previewShares !== null
+      ? `≈ ${formatTokenAmount(previewShares, core.vaultDecimals)} ${shareSymbol} — indicative, final price set at settlement`
+      : !touched && emptyWallet
         ? `No ${assetSymbol} in this wallet`
         : undefined;
 
@@ -195,11 +211,7 @@ export function DepositFlow({
         unit={assetSymbol}
         disabled={disabled}
         error={fieldError}
-        hint={
-          previewShares !== null
-            ? `≈ ${formatTokenAmount(previewShares, core.vaultDecimals)} ${shareSymbol} — indicative, final price set at settlement`
-            : undefined
-        }
+        hint={fieldHint}
       />
 
       {needsApprove && (
