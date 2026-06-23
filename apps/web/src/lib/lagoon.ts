@@ -77,6 +77,51 @@ export function downsampleToBucket(points: readonly SeriesPoint[]): SeriesPoint[
   return [...best.values()].sort((a, b) => a.t - b.t);
 }
 
+// Cap on how wide a gap we bridge (empty buckets between two real points). A
+// short settlement outage gets filled; a very long one is left as a real gap
+// rather than fabricating days of fake data. 8 buckets = 4 days at 12h.
+const MAX_FILL_RUN = 8;
+
+/**
+ * Insert a synthetic point at every empty bucket boundary inside the data range,
+ * so the line keeps a regular vertex each 12h even across a settlement outage
+ * (e.g. the 22 Jun gap). Missing buckets are filled by LINEAR INTERPOLATION
+ * between the real points bracketing the gap, so the fills sit on the straight
+ * line from one to the next (smooth, no dip), stamped at the bucket boundary.
+ *
+ * ⚠ These points are SYNTHETIC — they correspond to no real on-chain settlement
+ * and exist only to keep the curve visually continuous. Gaps wider than
+ * MAX_FILL_RUN buckets are left unfilled (the line just connects across).
+ *
+ * Expects the already-downsampled, time-sorted output of downsampleToBucket
+ * (one point per bucket index).
+ */
+export function fillBucketGaps(points: readonly SeriesPoint[]): SeriesPoint[] {
+  if (points.length < 2) return [...points];
+  const byIdx = new Map<number, SeriesPoint>();
+  for (const p of points) byIdx.set(Math.round(p.t / BUCKET_MS), p);
+  const indices = [...byIdx.keys()].sort((a, b) => a - b);
+
+  const out: SeriesPoint[] = [];
+  for (let k = 0; k < indices.length; k++) {
+    const a = indices[k]!;
+    const pa = byIdx.get(a)!;
+    out.push(pa);
+
+    const b = indices[k + 1];
+    if (b === undefined) break;
+    const gap = b - a - 1; // empty buckets between this real point and the next
+    if (gap <= 0 || gap > MAX_FILL_RUN) continue; // adjacent, or too wide to bridge
+
+    const vb = byIdx.get(b)!.v;
+    for (let i = a + 1; i < b; i++) {
+      const v = pa.v + ((vb - pa.v) * (i - a)) / (b - a); // straight line a → b
+      out.push({ t: i * BUCKET_MS, v });
+    }
+  }
+  return out;
+}
+
 const HISTORY_QUERY = `
   query VaultHistory($address: Address!, $chainId: Int!) {
     vaultByAddress(address: $address, chainId: $chainId) {
@@ -116,8 +161,8 @@ export async function fetchLagoonHistory(): Promise<VaultHistory> {
     .map((p) => ({ t: p.x * 1000, v: Number(p.y) }));
 
   return {
-    sharePrice: downsampleToBucket(sharePrice),
-    nav: downsampleToBucket(nav),
+    sharePrice: fillBucketGaps(downsampleToBucket(sharePrice)),
+    nav: fillBucketGaps(downsampleToBucket(nav)),
   };
 }
 
