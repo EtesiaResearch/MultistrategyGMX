@@ -2,18 +2,21 @@
 
 import { useMemo, useState } from "react";
 import useSWR from "swr";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { fetchLagoonHistory, type SeriesPoint, type VaultHistory } from "@/lib/lagoon";
 import { formatUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type Metric = "price" | "nav";
-type Range = "1D" | "7D" | "ALL";
+type Range = "7D" | "30D" | "ALL";
 
-const RANGES: Range[] = ["1D", "7D", "ALL"];
-const RANGE_MS: Record<Range, number> = { "1D": 86_400_000, "7D": 604_800_000, ALL: Infinity };
+const RANGES: Range[] = ["7D", "30D", "ALL"];
+const RANGE_MS: Record<Range, number> = { "7D": 604_800_000, "30D": 2_592_000_000, ALL: Infinity };
 
-const axisFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+// One mark per day — date-only axis labels; the tooltip still shows the real
+// settle time (the series is already downsampled to one point per UTC day in
+// fetchLagoonHistory, keeping each kept point's true timestamp).
+const axisFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 const tipFmt = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
   month: "short",
@@ -53,6 +56,7 @@ export function VaultChart(): React.JSX.Element {
   const [range, setRange] = useState<Range>("ALL");
 
   const points = useMemo<SeriesPoint[]>(() => {
+    // Series is already one-point-per-UTC-day (downsampled in fetchLagoonHistory).
     const all = (metric === "price" ? data?.sharePrice : data?.nav) ?? [];
     const cutoff = range === "ALL" ? 0 : (all.at(-1)?.t ?? 0) - RANGE_MS[range];
     return all.filter((p) => p.t >= cutoff);
@@ -138,6 +142,7 @@ export function VaultChart(): React.JSX.Element {
                 tickLine={false}
                 axisLine={false}
               />
+              {metric === "price" && <ReferenceLine y={1} stroke="#466267" strokeDasharray="4 4" />}
               <Tooltip
                 content={(props) => (
                   <ChartTooltip

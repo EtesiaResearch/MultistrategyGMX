@@ -38,15 +38,43 @@ export interface SeriesPoint {
 }
 
 export interface VaultHistory {
-  /** Net price per share in asset terms (1.0 at inception), per settlement. */
+  /** Net price per share in asset terms (1.0 at inception) — one point per 12h (00:00 / 12:00 UTC). */
   sharePrice: SeriesPoint[];
-  /** NAV (total assets) in USD, per settlement. */
+  /** NAV (total assets) in USD — one point per 12h (00:00 / 12:00 UTC). */
   nav: SeriesPoint[];
 }
 
 interface RawDataPoint {
   x: number;
   y: number | string | null;
+}
+
+// Snap-to interval for chart downsampling. p.t is unix MILLIseconds and the epoch
+// (1970-01-01) is a UTC midnight, so a 12h bucket lands exactly on 00:00 / 12:00
+// UTC — the canonical NAV settle ticks. Set to 86_400_000 for once-daily points.
+const BUCKET_MS = 12 * 60 * 60 * 1000; // 43_200_000
+
+/**
+ * Downsample a per-settlement series to ONE point per BUCKET_MS window: the
+ * settlement closest to each bucket boundary. With BUCKET_MS = 12h the
+ * boundaries are 00:00 and 12:00 UTC (the canonical NAV settles); off-cadence
+ * intraday settles — and one-off pushes like a manual recovery — are dropped so
+ * the chart reads as a clean vault curve.
+ *
+ * Bucketed by the NEAREST boundary (`round(t / BUCKET_MS)`), not a floor, so a
+ * settle at 11:58 and one at 12:02 land in the same bucket and the closer one
+ * wins. Pure UTC arithmetic — no timezone lib, DST-immune. The kept point keeps
+ * its real settle timestamp (honest tooltip). (Ported from UIVaultHL.)
+ */
+export function downsampleToBucket(points: readonly SeriesPoint[]): SeriesPoint[] {
+  const best = new Map<number, SeriesPoint>();
+  for (const p of points) {
+    const idx = Math.round(p.t / BUCKET_MS);
+    const dist = Math.abs(p.t - idx * BUCKET_MS);
+    const cur = best.get(idx);
+    if (cur === undefined || dist < Math.abs(cur.t - idx * BUCKET_MS)) best.set(idx, p);
+  }
+  return [...best.values()].sort((a, b) => a.t - b.t);
 }
 
 const HISTORY_QUERY = `
@@ -62,10 +90,10 @@ const HISTORY_QUERY = `
 `;
 
 /**
- * Price-per-share + NAV history, sourced from Lagoon's indexer (one point per
- * settlement — the price only moves on settle). This is the same data the
- * Lagoon app charts, and it is permanent: it lives on-chain, not on our
- * backend's disk.
+ * Price-per-share + NAV history, sourced from Lagoon's indexer (one raw point
+ * per settlement — the price only moves on settle), then downsampled to one
+ * point per 12h (00:00 / 12:00 UTC). This is the same on-chain data the Lagoon
+ * app charts, and it is permanent: it lives on-chain, not on our backend's disk.
  */
 export async function fetchLagoonHistory(): Promise<VaultHistory> {
   const data = await lagoonQuery<{
@@ -87,7 +115,10 @@ export async function fetchLagoonHistory(): Promise<VaultHistory> {
     .filter((p) => p.y !== null)
     .map((p) => ({ t: p.x * 1000, v: Number(p.y) }));
 
-  return { sharePrice, nav };
+  return {
+    sharePrice: downsampleToBucket(sharePrice),
+    nav: downsampleToBucket(nav),
+  };
 }
 
 const LATEST_REDEEM_REQUEST_QUERY = `
